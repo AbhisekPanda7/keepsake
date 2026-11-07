@@ -1,0 +1,23 @@
+{
+  "name": "keepsake-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --test src/lib/album/*.test.js src/lib/images/*.test.js src/lib/storage/*.test.js",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:account": "node scripts/e2e-account.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "heic-to": "1.6.7",
+    "next": "^16.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "0.180.0"
+  }
+}

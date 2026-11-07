@@ -1,0 +1,65 @@
+# All secrets and per-environment values come from environment variables.
+# See .env.example. Nothing secret belongs in this file.
+server:
+  port: ${PORT:8080}
+  # Behind Render's proxy, so that the client's real address is seen.
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: keepsake-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/keepsake}
+    username: ${DATABASE_USERNAME:postgres}
+    # Empty if unset. Without the default, the literal text "${DATABASE_PASSWORD}" would
+    # be sent to the database as the password.
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      # Free database plans allow few connections.
+      maximum-pool-size: ${DATABASE_POOL_SIZE:5}
+      minimum-idle: 1
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Not "public": Supabase publishes that schema through its web API.
+        default_schema: keepsake
+  flyway:
+    default-schema: keepsake
+    schemas: keepsake
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+keepsake:
+  jwt:
+    # At least 32 characters. The app won't start without it.
+    secret: ${JWT_SECRET:}
+    ttl-hours: ${JWT_TTL_HOURS:168}
+  cors:
+    # Comma-separated. For example https://your-site.vercel.app
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  quota:
+    # 200 MB each, so that one account can't fill a small free storage plan.
+    max-bytes-per-user: ${QUOTA_BYTES_PER_USER:209715200}
+  storage:
+    # "local" keeps photos on disk, for development. "supabase" is for deployment.
+    type: ${STORAGE_TYPE:local}
+    local-dir: ${STORAGE_LOCAL_DIR:./data/photos}
+    supabase-url: ${SUPABASE_URL:}
+    supabase-key: ${SUPABASE_SERVICE_KEY:}
+    supabase-bucket: ${SUPABASE_BUCKET:photos}
