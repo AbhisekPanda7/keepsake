@@ -5,6 +5,9 @@ services:
     name: keepsake-backend
     runtime: docker
     plan: free
+    # Beside the Supabase database (ap-southeast-1), so each query doesn't cross an ocean.
+    # A region can't be changed after the service is created.
+    region: singapore
     rootDir: backend
     healthCheckPath: /actuator/health
     envVars:
