@@ -10,6 +10,7 @@ import LoadingState from '@/components/UI/LoadingState';
 import Notice from '@/components/UI/Notice';
 import { useLibrary } from '@/hooks/useLibrary';
 import { advancePointerField, pointerField, usePointerFieldListener } from '@/lib/ambient/pointerField';
+import { CATEGORIES, DEFAULT_CATEGORY, countByCategory, inCategory, normalizeCategory } from '@/lib/album/categories';
 import { photoCountText } from '@/lib/album/photoInfo';
 import { leafCountFor } from '@/lib/album/pageModel';
 import { resolveTheme } from '@/lib/album/themes';
@@ -21,6 +22,26 @@ import AlbumCard from './AlbumCard';
 const ShowcaseScene = dynamic(() => import('@/components/Album/AlbumScene').then((module) => module.ShowcaseScene), { ssr: false });
 
 const FLY_MS = 480;
+/** Long enough for a moved book to fade from its shelf before the shelf closes up. */
+const MOVE_MS = 280;
+/** Which collection was last open, remembered in this browser only, as a convenience. */
+const COLLECTION_KEY = 'keepsake.collection';
+
+function rememberCollection(category) {
+  try {
+    localStorage.setItem(COLLECTION_KEY, category);
+  } catch {
+    // Not remembered; the library opens on Individual next time.
+  }
+}
+
+function recallCollection() {
+  try {
+    return normalizeCategory(localStorage.getItem(COLLECTION_KEY));
+  } catch {
+    return DEFAULT_CATEGORY;
+  }
+}
 
 /**
  * Feeds the pointer's position into CSS, where the table and every book respond to it.
@@ -60,6 +81,19 @@ export default function AlbumLibrary() {
   const [editing, setEditing] = useState(null); // an album, or 'new'
   const [deleting, setDeleting] = useState(null);
   const [leavingId, setLeavingId] = useState(null);
+  const [movingId, setMovingId] = useState(null);
+
+  // Both collections are the same library, filtered. Only the shelf below changes.
+  const [collection, setCollection] = useState(DEFAULT_CATEGORY);
+  useEffect(() => {
+    setCollection(recallCollection());
+  }, []);
+  const chooseCollection = useCallback((category) => {
+    setCollection(category);
+    rememberCollection(category);
+  }, []);
+  const shelved = useMemo(() => inCategory(albums, collection), [albums, collection]);
+  const counts = useMemo(() => countByCategory(albums), [albums]);
 
   // Loaded ahead of time so that opening a book doesn't wait on the 3D engine.
   useEffect(() => {
@@ -103,13 +137,27 @@ export default function AlbumLibrary() {
     setEditing(null);
     if (target === 'new') {
       const album = await library.createAlbum(fields);
-      if (album) openAlbum(album);
+      if (album) {
+        // Back in the library, the new book is on the shelf it was made for.
+        chooseCollection(normalizeCategory(album.category));
+        openAlbum(album);
+      }
     } else {
       await library.saveDetails(target.id, fields);
     }
   };
 
   const onDuplicate = useCallback((album) => library.duplicateAlbum(album.id), [library]);
+
+  /** The book fades from this shelf, and is on the other one when it's opened. */
+  const onMove = useCallback(
+    async (album, category) => {
+      setMovingId(album.id);
+      await Promise.all([library.moveAlbum(album, category), new Promise((done) => setTimeout(done, MOVE_MS))]);
+      setMovingId(null);
+    },
+    [library],
+  );
 
   const confirmDelete = async () => {
     const album = deleting;
@@ -118,10 +166,10 @@ export default function AlbumLibrary() {
   };
 
   const empty = status === 'ready' && albums.length === 0;
-  const total = albums.reduce((sum, album) => sum + album.photoCount, 0);
+  const total = shelved.reduce((sum, album) => sum + album.photoCount, 0);
 
-  // The most recently used album stars in the 3D scene. New visitors see a blank book.
-  const featured = albums[0] ?? null;
+  // The most recently used album in this collection stars in the 3D scene. An empty one shows a blank book.
+  const featured = shelved[0] ?? null;
   const [featuredPhotos, setFeaturedPhotos] = useState([]);
   const featuredId = featured?.id ?? null;
   useEffect(() => {
@@ -225,21 +273,26 @@ export default function AlbumLibrary() {
       )}
 
       <div className="library-scroll">
-        <Header />
+        <Header
+          collections={
+            status === 'ready'
+              ? { active: collection, counts, onChange: chooseCollection, panelId: albums.length > 0 ? 'collection-shelf' : undefined }
+              : null
+          }
+        />
 
-        <section className={`library-intro${empty ? ' is-empty' : ''}`}>
-          <h1>{empty ? 'Photographs deserve pages, not folders.' : 'Your albums'}</h1>
-          {empty ? (
-            <p>Keep your pictures in albums you can open, and turn their pages whenever you want to go back.</p>
-          ) : (
-            status === 'ready' && (
-              <p>
-                {albums.length} {albums.length === 1 ? 'album' : 'albums'}, {photoCountText(total).toLowerCase()}
-              </p>
-            )
+        {/* The same quiet heading whether or not there are albums yet: the book on the desk says the rest. */}
+        <section className="library-intro">
+          <h1>Your albums</h1>
+          {status === 'ready' && (
+            <p>
+              {empty
+                ? 'No albums yet'
+                : `${shelved.length} ${shelved.length === 1 ? 'album' : 'albums'}, ${photoCountText(total).toLowerCase()}`}
+            </p>
           )}
           <button type="button" className="tool large strong" onClick={() => setEditing('new')} disabled={status === 'loading'}>
-            {empty ? 'Begin your first album' : 'New album'}
+            New album
           </button>
         </section>
 
@@ -275,21 +328,29 @@ export default function AlbumLibrary() {
           <LoadingState />
         ) : (
           albums.length > 0 && (
-            <div className="album-shelf">
-              <ul className="album-grid">
-                {albums.map((album, index) => (
-                  <AlbumCard
-                    key={album.id}
-                    index={index}
-                    album={album}
-                    leaving={leavingId && leavingId !== album.id}
-                    onOpen={openAlbum}
-                    onEdit={setEditing}
-                    onDuplicate={onDuplicate}
-                    onDelete={setDeleting}
-                  />
-                ))}
-              </ul>
+            <div className="album-shelf" role="tabpanel" id="collection-shelf" aria-labelledby={`collection-${collection}`}>
+              {shelved.length > 0 ? (
+                <ul key={collection} className="album-grid">
+                  {shelved.map((album, index) => (
+                    <AlbumCard
+                      key={album.id}
+                      index={index}
+                      album={album}
+                      leaving={leavingId && leavingId !== album.id}
+                      moving={movingId === album.id}
+                      onOpen={openAlbum}
+                      onEdit={setEditing}
+                      onDuplicate={onDuplicate}
+                      onMove={onMove}
+                      onDelete={setDeleting}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <p key={collection} className="collection-empty">
+                  {CATEGORIES[collection].empty} Begin one with New album, or move one here from its menu.
+                </p>
+              )}
             </div>
           )
         )}

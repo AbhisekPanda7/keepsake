@@ -557,3 +557,12 @@ test('captions are honest about where a date came from, and survive bad data', (
   }
   assert.equal(formatPhotoDate(null), '');
 });
+
+test('the title page dates the album from its earliest photograph', async () => {
+  const { memoriesSince } = await import('./pageModel.js');
+  const at = (iso) => Date.parse(iso);
+  assert.equal(memoriesSince([], at('2026-11-08T00:00:00Z')), 2026, 'a new album starts this year');
+  assert.equal(memoriesSince([{ takenAt: at('2019-06-01T00:00:00Z'), addedAt: at('2026-01-01T00:00:00Z') }, { takenAt: at('2021-01-01T00:00:00Z') }]), 2019);
+  assert.equal(memoriesSince([{ takenAt: null, addedAt: at('2024-03-03T00:00:00Z') }]), 2024, 'undated photos count from when they were added');
+  assert.equal(describeSide(0, [], 'T').since, new Date().getFullYear());
+});

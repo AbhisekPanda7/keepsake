@@ -79,6 +79,8 @@ class ApiIntegrationTest {
         registry.add("keepsake.cors.allowed-origins", () -> "https://album.example");
         registry.add("keepsake.quota.max-bytes-per-user", () -> QUOTA_BYTES);
         registry.add("keepsake.storage.type", () -> "local");
+        // These tests count albums exactly; StarterAlbumApiTest covers the album new accounts get.
+        registry.add("keepsake.starter-album", () -> "false");
         registry.add("keepsake.storage.local-dir", STORAGE_DIR::toString);
     }
 

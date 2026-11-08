@@ -494,7 +494,7 @@ async function migration() {
   check('built an old-format database', (await buildV1(null, 0)) === 1);
   await load('/');
   check('an unused old database gives an empty library', (await libraryCards()).length === 0);
-  check('welcoming empty state', await js("return document.querySelector('.library-intro.is-empty h1')?.textContent.includes('deserve pages');"));
+  check('a quiet empty state', await js("return document.querySelector('.library-intro h1')?.textContent === 'Your albums' && document.querySelector('.library-intro p')?.textContent === 'No albums yet';"));
   await shot('library-1-empty');
 
   await goNeutral();
@@ -1247,6 +1247,81 @@ async function multiAlbum() {
   check('its images removed', afterDelete.totals.blobs === beforeDelete.totals.blobs - 3 && afterDelete.totals.orphanBlobs === 0);
   check('other albums fully intact', afterDelete.names.join() === greenNames && afterDelete.blobs === 4 && (await storedPhotos(coreId)).blobs === coreBefore.blobs + 0);
 
+  section('Individual and Couple collections (kept in this browser)');
+  await load('/');
+  const tabs = () => js(`return [...document.querySelectorAll('.collection-tab')].map((t) => ({ name: t.querySelector('.collection-name').textContent,
+    count: Number(t.querySelector('.collection-count').textContent), selected: t.getAttribute('aria-selected') === 'true' }));`);
+  let collectionTabs = await tabs();
+  const shelfIds = async () => (await libraryCards()).map((c) => c.id);
+  check('the library has Individual and Couple collections', collectionTabs.map((x) => x.name).join() === 'Individual,Couple');
+  check('every existing album is Individual', collectionTabs[0].selected && collectionTabs[1].count === 0
+    && collectionTabs[0].count === afterDelete.totals.albums && (await shelfIds()).length === afterDelete.totals.albums);
+  check('new albums were saved as Individual by default', (await storedPhotos(greenId)).album.category === 'INDIVIDUAL');
+  // An album saved before categories existed has no category at all.
+  await js(`const db = await new Promise((res, rej) => { const q = indexedDB.open('keepsake'); q.onsuccess = () => res(q.result); q.onerror = rej; });
+    await new Promise((res) => { const tx = db.transaction('albums', 'readwrite');
+      tx.objectStore('albums').put({ id: 'from-before', title: 'From before', description: '', theme: { colour: 'sand', material: 'linen', paper: 'white' }, createdAt: 1, updatedAt: 2 });
+      tx.oncomplete = res; }); db.close();`);
+  await load('/');
+  check('an album from before categories appears under Individual', (await shelfIds()).includes('from-before') && (await tabs())[0].count === afterDelete.totals.albums + 1);
+  await deleteFromLibrary('from-before');
+
+  const greenBefore = await storedPhotos(greenId);
+  await js(`document.querySelector('[data-album-id="${greenId}"] .album-menu-button').click();`);
+  await sleep(150);
+  await js(`[...document.querySelectorAll('[data-album-id="${greenId}"] .album-menu-list button')].find((b) => b.textContent === 'Move to Couple').click();`);
+  await waitFor("document.querySelector('.notice')?.textContent.includes('moved to Couple')");
+  await sleep(300);
+  const greenAfter = await storedPhotos(greenId);
+  check('moving leaves the Individual shelf', !(await shelfIds()).includes(greenId));
+  check('the moved album keeps everything', greenAfter.album.category === 'COUPLE' && greenAfter.album.id === greenId
+    && greenAfter.album.updatedAt === greenBefore.album.updatedAt && greenAfter.album.title === greenBefore.album.title
+    && JSON.stringify(greenAfter.album.theme) === JSON.stringify(greenBefore.album.theme)
+    && JSON.stringify(greenAfter.meta) === JSON.stringify(greenBefore.meta) && greenAfter.blobs === greenBefore.blobs);
+  await js("document.querySelector('#collection-COUPLE').click();");
+  await sleep(500);
+  collectionTabs = await tabs();
+  check('the Couple shelf has it', collectionTabs[1].selected && collectionTabs[1].count === 1 && (await shelfIds()).join() === greenId);
+  await shot('library-couple');
+  check('tabs follow the arrow keys', await js(`document.querySelector('#collection-COUPLE').focus();
+    document.querySelector('#collection-COUPLE').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    return document.activeElement.id === 'collection-INDIVIDUAL' && document.activeElement.getAttribute('aria-selected') === 'true';`));
+  await js("document.querySelector('#collection-COUPLE').click();");
+  await sleep(400);
+  await js(`document.querySelector('[data-album-id="${greenId}"] .album-menu-button').click();`);
+  await sleep(150);
+  await js(`[...document.querySelectorAll('[data-album-id="${greenId}"] .album-menu-list button')].find((b) => b.textContent === 'Move to Individual').click();`);
+  await waitFor("document.querySelector('.notice')?.textContent.includes('moved to Individual')");
+  await sleep(300);
+  check('and back again', (await storedPhotos(greenId)).album.category === 'INDIVIDUAL' && (await shelfIds()).length === 0);
+  await js("document.querySelector('#collection-INDIVIDUAL').click();");
+  await sleep(400);
+
+  await js(`[...document.querySelectorAll('.library-intro .tool')][0].click();`);
+  await sleep(250);
+  check('the creation screen starts on Individual', await js("return document.querySelector('dialog[open] input[name=album-category][value=INDIVIDUAL]').checked;"));
+  await js("document.querySelector('dialog[open] input[name=album-category][value=COUPLE]').click();");
+  await setField('dialog[open] input[name="album-title"]', 'Together');
+  await shot('library-create-couple');
+  await clickButton('Create album');
+  await waitFor(`location.pathname.startsWith('/albums/') && ${ALBUM_READY}`);
+  const togetherId = decodeURIComponent((await js('return location.pathname;')).split('/')[2]);
+  check('a Couple album is saved as Couple', (await storedPhotos(togetherId)).album.category === 'COUPLE');
+  await waitFor("window.__album.stage() === 'open'");
+  currentPath = await js('return location.pathname;');
+  await backToLibrary();
+  check('and is waiting on the Couple shelf', (await tabs())[1].selected && (await shelfIds()).join() === togetherId);
+  await deleteFromLibrary(togetherId);
+  check('the Couple shelf can be empty', (await js("return document.querySelector('.collection-empty')?.textContent ?? '';")).includes('No couple albums yet'));
+  await js("document.querySelector('#collection-INDIVIDUAL').click();");
+  await sleep(400);
+  check('accounts screens explain they are not needed here', await (async () => {
+    await send('Page.navigate', { url: `${URL_ROOT}/forgot-password` });
+    await waitFor("document.querySelector('.account-card h1')");
+    return (await js("return document.querySelector('.account-card h1').textContent;")) === 'No account needed';
+  })());
+
   section('Navigation');
   await load('/');
   check('library survives a refresh', (await libraryCards()).length === afterDelete.totals.albums);
@@ -1330,6 +1405,7 @@ async function phone() {
   await helpers();
   check('library has no horizontal overflow', await noHorizontalOverflow());
   check('library cards fit the screen', await js("return [...document.querySelectorAll('.album-card')].every((c) => { const r = c.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });"));
+  check('both collections fit a phone, with room for a finger', await js("return [...document.querySelectorAll('.collection-tab')].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.height >= 44; });"));
   await shot('phone-library');
   await js(`[...document.querySelectorAll('.library-intro .tool')][0].click();`);
   await sleep(300);

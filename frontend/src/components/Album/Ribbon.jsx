@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { PAGE_HEIGHT } from '@/lib/album/bookModel';
 import { surfaceMaterial } from '@/lib/album/proceduralTextures';
 
-const WIDTH = 0.05;
+const WIDTH = 0.075;
 const SEGMENTS = 28;
 /** How far the tail hangs out below the pages. */
 const TAIL = 0.34;
@@ -67,7 +67,10 @@ export default function Ribbon({ controller, colour }) {
   const ref = useRef(null);
   const geometry = useMemo(ribbonGeometry, []);
   const material = useMemo(() => {
-    return surfaceMaterial({ color: colour, roughness: 0.46, metalness: 0 });
+    // Both sides: the strip's triangles face into the book, so one-sided it was never seen.
+    const silk = surfaceMaterial({ color: colour, roughness: 0.46, metalness: 0 });
+    silk.side = THREE.DoubleSide;
+    return silk;
   }, [colour]);
 
   useEffect(

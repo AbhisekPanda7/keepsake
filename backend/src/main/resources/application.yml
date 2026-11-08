@@ -63,3 +63,17 @@ keepsake:
     supabase-url: ${SUPABASE_URL:}
     supabase-key: ${SUPABASE_SERVICE_KEY:}
     supabase-bucket: ${SUPABASE_BUCKET:photos}
+  # Every new account starts with an empty "Our Memories" album, so the library opens on a book.
+  starter-album: ${STARTER_ALBUM:true}
+  password-reset:
+    # The website, which reset links open. For example https://your-site.vercel.app
+    app-url: ${APP_URL:http://localhost:3000}
+    token-ttl-minutes: ${RESET_TOKEN_TTL_MINUTES:30}
+  mail:
+    # "none" sends nothing, "brevo" sends through Brevo's API, "outbox" writes files (local only).
+    type: ${MAIL_TYPE:none}
+    from: ${MAIL_FROM:}
+    from-name: ${MAIL_FROM_NAME:Keepsake}
+    brevo-api-key: ${BREVO_API_KEY:}
+    brevo-url: ${BREVO_API_URL:https://api.brevo.com/v3}
+    outbox-dir: ${MAIL_OUTBOX_DIR:./data/outbox}

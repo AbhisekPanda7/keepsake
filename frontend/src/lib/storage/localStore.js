@@ -18,6 +18,7 @@
  * Every operation that changes photographs is scoped to one album, by looking up that
  * album's photos through the byAlbum index. Nothing here may ever clear a whole store.
  */
+import { normalizeCategory } from '../album/categories.js';
 import { normalizeCaption } from '../album/photoInfo.js';
 import { applyOrder } from '../album/reorder.js';
 import { normalizeTheme } from '../album/themes.js';
@@ -35,6 +36,8 @@ function newId() {
 const albumRange = (albumId) => IDBKeyRange.bound([albumId, -Infinity], [albumId, Infinity]);
 const cleanTitle = (title) => String(title ?? '').trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_TITLE;
 const cleanDescription = (text) => String(text ?? '').trim().slice(0, MAX_DESCRIPTION_LENGTH);
+/** Albums saved before categories existed have none, and are Individual. Nothing is rewritten. */
+const withCategory = (record) => ({ ...record, category: normalizeCategory(record.category) });
 
 /** Marks an album as changed, inside the same transaction as the change itself. */
 async function touchAlbum(tx, albumId) {
@@ -52,7 +55,7 @@ export async function listAlbums() {
     const index = tx.objectStore(STORES.photos).index('byAlbum');
     const counts = await Promise.all(records.map((record) => asPromise(index.count(albumRange(record.id)))));
     return records
-      .map((record, i) => ({ ...record, photoCount: counts[i] }))
+      .map((record, i) => ({ ...withCategory(record), photoCount: counts[i] }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   });
 }
@@ -63,17 +66,18 @@ export async function getAlbum(albumId) {
     const record = await asPromise(tx.objectStore(STORES.albums).get(albumId));
     if (!record) return null;
     const photos = await asPromise(tx.objectStore(STORES.photos).index('byAlbum').getAll(albumRange(albumId)));
-    return { ...record, photos };
+    return { ...withCategory(record), photos };
   });
 }
 
-export async function createAlbum({ title, description, theme } = {}) {
+export async function createAlbum({ title, description, theme, category } = {}) {
   const now = Date.now();
   const record = {
     id: newId(),
     title: cleanTitle(title),
     description: cleanDescription(description),
     theme: normalizeTheme(theme),
+    category: normalizeCategory(category),
     createdAt: now,
     updatedAt: now,
   };
@@ -93,8 +97,11 @@ export async function saveAlbum(albumId, fields) {
     if ('title' in fields) next.title = cleanTitle(fields.title);
     if ('description' in fields) next.description = cleanDescription(fields.description);
     if ('theme' in fields) next.theme = normalizeTheme(fields.theme);
+    if ('category' in fields) next.category = normalizeCategory(fields.category);
+    // Moving an album to the other collection is only shelving; it isn't an edit.
+    if (Object.keys(fields).every((key) => key === 'category')) next.updatedAt = record.updatedAt;
     albums.put(next);
-    return next;
+    return withCategory(next);
   });
 }
 
@@ -113,7 +120,7 @@ export async function duplicateAlbum(albumId) {
     const now = Date.now();
     const suffix = ' (copy)';
     const copy = {
-      ...source,
+      ...withCategory(source),
       id: newId(),
       title: source.title.slice(0, MAX_TITLE_LENGTH - suffix.length) + suffix,
       createdAt: now,

@@ -29,3 +29,13 @@ services:
         sync: false
       - key: SUPABASE_BUCKET
         value: photos
+      # Password reset emails, sent through Brevo's API (Render's free plan blocks SMTP).
+      # Set by hand to "brevo" together with the two below; with "brevo" and no key the app won't start.
+      - key: MAIL_TYPE
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: APP_URL
+        sync: false

@@ -1,11 +1,15 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import { getSession, subscribeSession, usesAccount } from '@/lib/storage/session';
 import SignIn from './SignIn';
 
 const SERVER = 'server';
 const serverSnapshot = () => SERVER;
+
+/** Reached without signing in, since they're how someone who can't sign in gets back in. */
+const OPEN_PATHS = new Set(['/forgot-password', '/reset-password']);
 
 /**
  * When albums are kept on the server, everything waits for someone to sign in. Signing
@@ -14,7 +18,8 @@ const serverSnapshot = () => SERVER;
  */
 export default function AccountGate({ children }) {
   const session = useSyncExternalStore(subscribeSession, getSession, serverSnapshot);
-  if (!usesAccount) return children;
+  const path = usePathname()?.replace(/\/+$/, '') || '/';
+  if (!usesAccount || OPEN_PATHS.has(path)) return children;
   // Whether someone is signed in is only known in the browser, so the first render waits.
   if (session === SERVER) return null;
   if (!session) return <SignIn />;

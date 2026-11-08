@@ -65,7 +65,8 @@ export default function Book({ controller, photos, title, description, theme, co
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const paper = theme.paperInfo;
+  // The pages' gilding takes the cover's metal, so a silver-tooled book has silver pages.
+  const paper = useMemo(() => ({ ...theme.paperInfo, foil: theme.colourInfo.foil }), [theme.paperInfo, theme.colourInfo.foil]);
 
   const textures = useMemo(() => new PageTextureCache(loadBitmap, paper), [paper]);
   useEffect(() => {

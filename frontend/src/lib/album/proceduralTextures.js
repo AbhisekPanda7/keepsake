@@ -11,6 +11,7 @@ import {
   drawCoverMaps,
   drawSpineMaps,
   endpaperCanvas,
+  liningCanvas,
   pageEdgeCanvas,
   paperBumpCanvas,
   paperGrainCanvas,
@@ -129,6 +130,17 @@ export function buildSpineTextures({ title, theme }) {
 export function endpaperTexture(colour) {
   return once(`endpaper:${colour.endpaper}`, () => {
     const texture = new THREE.CanvasTexture(endpaperCanvas(colour));
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    return texture;
+  });
+}
+
+/** The gilt-tooled lining of a board. Shared by every book with the same look. */
+export function liningTexture(theme, crest) {
+  const { colourInfo, material } = theme;
+  return once(`lining:${theme.key}:${crest}`, () => {
+    const texture = new THREE.CanvasTexture(liningCanvas(colourInfo, material, { crest }));
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 8;
     return texture;

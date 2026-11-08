@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { handOverEmail } from '@/lib/account/emailHandoff';
 import { login, register } from '@/lib/storage/remoteStore';
 import { setSession } from '@/lib/storage/session';
 
@@ -105,6 +107,13 @@ export default function SignIn() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
+        {!creating && (
+          <p className="account-forgot">
+            <Link href="/forgot-password" className="text-action" onClick={() => handOverEmail(email)}>
+              Forgot Password?
+            </Link>
+          </p>
+        )}
 
         <p className="account-error" role="alert">
           {error}

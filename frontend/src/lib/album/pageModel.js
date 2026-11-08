@@ -75,6 +75,19 @@ export function photoOnSide(sideIndex, photos) {
 }
 
 /**
+ * The year printed on the title page's plaque: when the earliest photograph was taken, or
+ * added if it has no date, or this year for an album still waiting for its first.
+ */
+export function memoriesSince(photos, now = Date.now()) {
+  let earliest = Infinity;
+  for (const photo of photos) {
+    const when = Number.isFinite(photo.takenAt) && photo.takenAt > 0 ? photo.takenAt : photo.addedAt;
+    if (Number.isFinite(when) && when > 0 && when < earliest) earliest = when;
+  }
+  return new Date(Number.isFinite(earliest) ? earliest : now).getFullYear();
+}
+
+/**
  * Everything needed to draw one page. `key` identifies the finished artwork, so it
  * changes whenever what is printed on the page would change.
  */
@@ -84,13 +97,15 @@ export function describeSide(sideIndex, photos, albumTitle = '', mode = MODE_SPR
   const base = { sideIndex, single, spineOnRight: !single && sideIndex % 2 === 1 };
   const suffix = single ? ':s' : '';
   if (sideIndex === 0) {
+    const since = memoriesSince(photos);
     return {
       ...base,
-      key: `title:${photos.length}:${albumTitle}:${description}${suffix}`,
+      key: `title:${photos.length}:${albumTitle}:${description}:${since}${suffix}`,
       kind: 'title',
       photoCount: photos.length,
       title: albumTitle,
       description,
+      since,
     };
   }
   const photo = photoOnSide(sideIndex, photos);

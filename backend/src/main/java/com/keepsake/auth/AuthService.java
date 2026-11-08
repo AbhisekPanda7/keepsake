@@ -4,12 +4,14 @@ import com.keepsake.auth.AuthDtos.AuthResponse;
 import com.keepsake.auth.AuthDtos.LoginRequest;
 import com.keepsake.auth.AuthDtos.RegisterRequest;
 import com.keepsake.auth.AuthDtos.UserResponse;
+import com.keepsake.album.AlbumService;
 import com.keepsake.common.ApiException;
 import com.keepsake.config.KeepsakeProperties;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -18,6 +20,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class AuthService {
@@ -30,8 +33,17 @@ public class AuthService {
     /** Compared against when an email is unknown, so that it takes as long as a wrong password. */
     private final String decoyHash;
 
+    private final AlbumService albums;
+    private final TransactionTemplate transaction;
+    /** Whether a new account starts with an empty "Our Memories" album. */
+    private final boolean starterAlbum;
+
     public AuthService(UserRepository users, PasswordEncoder passwords, JwtEncoder jwtEncoder, LoginThrottle throttle,
-            KeepsakeProperties properties) {
+            KeepsakeProperties properties, AlbumService albums, TransactionTemplate transaction,
+            @Value("${keepsake.starter-album:true}") boolean starterAlbum) {
+        this.albums = albums;
+        this.transaction = transaction;
+        this.starterAlbum = starterAlbum;
         this.users = users;
         this.passwords = passwords;
         this.jwtEncoder = jwtEncoder;
@@ -52,7 +64,11 @@ public class AuthService {
         String name = request.displayName() == null ? "" : request.displayName().trim();
         user.displayName = name.isEmpty() ? email.substring(0, email.indexOf('@')) : name;
         user.createdAt = Instant.now();
-        users.save(user);
+        // The account and its first album are saved together, or not at all.
+        transaction.executeWithoutResult(status -> {
+            users.save(user);
+            if (starterAlbum) albums.createStarter(user.id);
+        });
         return issueToken(user);
     }
 
@@ -84,6 +100,8 @@ public class AuthService {
                 .subject(user.id.toString())
                 .issuedAt(now)
                 .expiresAt(expires)
+                // Ends this sign-in when the password is next changed. See SessionVersions.
+                .claim("sv", user.sessionVersion)
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

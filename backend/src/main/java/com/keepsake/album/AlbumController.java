@@ -46,8 +46,8 @@ public class AlbumController {
     }
 
     @GetMapping("/albums")
-    List<AlbumResponse> list(@AuthenticationPrincipal Jwt jwt) {
-        return service.list(owner(jwt));
+    List<AlbumResponse> list(@AuthenticationPrincipal Jwt jwt, @RequestParam(value = "category", required = false) String category) {
+        return service.list(owner(jwt), AlbumCategory.parse(category));
     }
 
     @PostMapping("/albums")

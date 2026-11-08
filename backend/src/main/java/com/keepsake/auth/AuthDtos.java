@@ -2,6 +2,7 @@ package com.keepsake.auth;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public final class AuthDtos {
@@ -24,4 +25,21 @@ public final class AuthDtos {
     }
 
     public record AuthResponse(String token, long expiresAt, UserResponse user) {}
+
+    // ---- forgotten passwords ----
+
+    public record ResetRequest(@NotBlank @Email @Size(max = 254) String email) {}
+
+    /** The code from a reset link. Sent in a request body, never in a URL, which servers log. */
+    public record ResetCodeRequest(@NotBlank @Size(max = 128) String token) {}
+
+    /** The password's own rules are checked by the service, which explains what to change. */
+    public record ResetPasswordRequest(
+            @NotBlank @Size(max = 128) String token,
+            @NotNull @Size(max = 256) String password,
+            @NotNull @Size(max = 256) String confirmPassword) {}
+
+    public record ResetRequestedResponse(String message) {}
+
+    public record ResetCheckResponse(long expiresAt) {}
 }

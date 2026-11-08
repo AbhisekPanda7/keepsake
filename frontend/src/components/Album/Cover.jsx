@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildCoverTextures, coverEdgeTextures, endpaperTexture, surfaceMaterial } from '@/lib/album/proceduralTextures';
+import { buildCoverTextures, coverEdgeTextures, endpaperTexture, liningTexture, surfaceMaterial } from '@/lib/album/proceduralTextures';
 import { noteCoverDrawn } from '@/lib/ambient/cinema';
 import { coverArtReady } from '@/lib/album/surfaces';
 
@@ -190,6 +190,9 @@ export default function Cover({ controller, which, title, layout, theme, coverWi
     coverArtReady().then(() => {
       if (cancelled) return;
       built = buildCoverTextures({ title: isFront ? title : '', hingeLeft: isFront, theme, width: coverWidth });
+      // The gilt lining replaces the plain endpaper once its fonts and leather are in.
+      innerMaterial.map = liningTexture(theme, isFront);
+      innerMaterial.needsUpdate = true;
       setArt(built);
       invalidate();
     });
@@ -201,7 +204,7 @@ export default function Cover({ controller, which, title, layout, theme, coverWi
         built.normalMap.dispose();
       }
     };
-  }, [isFront, title, theme, coverWidth, invalidate]);
+  }, [isFront, title, theme, coverWidth, invalidate, innerMaterial]);
 
   useEffect(() => {
     if (!art) return;

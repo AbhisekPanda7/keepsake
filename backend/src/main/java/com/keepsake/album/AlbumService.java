@@ -55,8 +55,11 @@ public class AlbumService {
 
     // ---- albums ---------------------------------------------------------------------
 
-    public List<AlbumResponse> list(UUID owner) {
-        List<Album> owned = albums.findByOwnerIdAndDeletedAtIsNullOrderByUpdatedAtDesc(owner);
+    /** Every album this person has, or only those in one category when it's given. */
+    public List<AlbumResponse> list(UUID owner, AlbumCategory category) {
+        List<Album> owned = category == null
+                ? albums.findByOwnerIdAndDeletedAtIsNullOrderByUpdatedAtDesc(owner)
+                : albums.findByOwnerIdAndCategoryAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, category);
         if (owned.isEmpty()) return List.of();
         Map<UUID, Long> counts = new HashMap<>();
         for (Object[] row : photos.countByAlbum(owned.stream().map(a -> a.id).toList())) {
@@ -78,19 +81,47 @@ public class AlbumService {
         album.title = AlbumRules.cleanTitle(request.title());
         album.description = AlbumRules.cleanDescription(request.description());
         applyTheme(album, request.theme());
+        AlbumCategory category = AlbumCategory.parse(request.category());
+        album.category = category == null ? AlbumCategory.DEFAULT : category;
         album.createdAt = now;
         album.updatedAt = now;
         albums.save(album);
         return AlbumResponse.summary(album, 0);
     }
 
+    /**
+     * The empty album every new account starts with, so the library opens on a book rather
+     * than an empty table. It's an ordinary Individual album, free to rename or delete.
+     * Called inside the transaction that creates the account.
+     */
+    public void createStarter(UUID owner) {
+        Instant now = Instant.now();
+        Album album = new Album();
+        album.id = UUID.randomUUID();
+        album.ownerId = owner;
+        album.title = AlbumRules.DEFAULT_TITLE;
+        album.description = "";
+        applyTheme(album, null);
+        album.category = AlbumCategory.DEFAULT;
+        album.createdAt = now;
+        album.updatedAt = now;
+        albums.save(album);
+    }
+
+    /**
+     * Moving an album to the other category changes only that: its id, photographs,
+     * captions, order and cover stay exactly as they are, and so does its place in time.
+     */
     public AlbumResponse update(UUID owner, UUID albumId, UpdateAlbumRequest request) {
+        AlbumCategory category = AlbumCategory.parse(request.category());
         return transaction.execute(status -> {
             Album album = owned(owner, albumId);
             if (request.title() != null) album.title = AlbumRules.cleanTitle(request.title());
             if (request.description() != null) album.description = AlbumRules.cleanDescription(request.description());
             if (request.theme() != null) applyTheme(album, request.theme());
-            album.updatedAt = Instant.now();
+            if (category != null) album.category = category;
+            boolean onlyMoved = request.title() == null && request.description() == null && request.theme() == null;
+            if (!onlyMoved) album.updatedAt = Instant.now();
             albums.save(album);
             return AlbumResponse.full(album, photos.findByAlbumIdAndDeletedAtIsNullOrderByPosition(albumId).stream().map(PhotoResponse::from).toList());
         });
@@ -134,6 +165,7 @@ public class AlbumService {
         copy.themeColour = source.themeColour;
         copy.themeMaterial = source.themeMaterial;
         copy.themePaper = source.themePaper;
+        copy.category = source.category;
         copy.createdAt = now;
         copy.updatedAt = now;
 

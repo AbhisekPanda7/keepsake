@@ -2192,16 +2192,469 @@ button {
   align-items: center;
   gap: 12px;
   min-width: 0;
+  /* The header lets clicks through to the scene; Sign out must still take them. */
+  pointer-events: auto;
 }
 
-.account-who {
-  max-width: 22ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .account-out {
   font-size: 0.8125rem;
   white-space: nowrap;
+}
+/* ---- Forgotten passwords ------------------------------------------- */
+
+a.paper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.account-forgot {
+  margin: -8px 0 0;
+  text-align: right;
+}
+
+.account-forgot .text-action,
+.account-card .account-switch a.text-action {
+  color: var(--ink);
+  border-bottom-color: rgba(76, 56, 37, 0.4);
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.account-forgot .text-action:hover,
+.account-card .account-switch a.text-action:hover {
+  color: var(--danger);
+}
+
+.account-note {
+  margin: -4px 0 4px;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: rgba(76, 56, 37, 0.85);
+  overflow-wrap: anywhere;
+}
+
+/* A small wax-seal mark on the cards that confirm something happened. */
+.account-seal {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #a24a33, var(--danger) 70%);
+  color: var(--ivory);
+  box-shadow: 0 2px 6px rgba(60, 20, 8, 0.35), inset 0 -2px 3px rgba(0, 0, 0, 0.25);
+}
+
+.password-field > label {
+  line-height: 1.3;
+}
+
+.password-input {
+  position: relative;
+  display: block;
+}
+
+.password-input input {
+  padding-right: 64px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: rgba(76, 56, 37, 0.85);
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  background: rgba(76, 56, 37, 0.08);
+  color: var(--ink);
+}
+
+.password-toggle:focus-visible {
+  outline-color: var(--ink);
+}
+
+.password-field input[aria-invalid='true'] {
+  border-color: rgba(141, 59, 38, 0.7);
+}
+
+.password-meter {
+  display: grid;
+  gap: 6px;
+  margin-top: -6px;
+}
+
+.password-meter-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.password-meter-bar i {
+  height: 3px;
+  background: rgba(76, 56, 37, 0.14);
+  transition: background-color 220ms ease;
+}
+
+.password-meter.is-1 .password-meter-bar i:nth-child(-n + 1) {
+  background: var(--danger);
+}
+
+.password-meter.is-2 .password-meter-bar i:nth-child(-n + 2) {
+  background: #a87a3a;
+}
+
+.password-meter.is-3 .password-meter-bar i:nth-child(-n + 3),
+.password-meter.is-4 .password-meter-bar i {
+  background: #5d6b3a;
+}
+
+.password-meter-text,
+.password-match {
+  min-height: 1.3em;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  color: rgba(76, 56, 37, 0.85);
+}
+
+.password-meter.is-1 .password-meter-text,
+.password-match.is-wrong {
+  color: var(--danger);
+}
+
+.password-match {
+  margin-top: -8px;
+}
+
+.password-match.is-right {
+  color: #4f5d30;
+}
+
+/* ---- The library's two collections ------------------------------------ */
+
+/* Two small engraved tabs in the header's corner, in the same lettering as View. */
+.collections {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  padding-right: 14px;
+  border-right: 1px solid var(--gold-soft);
+  pointer-events: auto;
+}
+
+.collection-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: -6px 0;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--cream);
+  /* The lit bookshelf can sit right behind the corner, so the lettering carries its own shade. */
+  text-shadow: 0 1px 2px rgba(6, 3, 1, 0.95), 0 0 10px rgba(6, 3, 1, 0.9), 0 0 22px rgba(6, 3, 1, 0.7);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 240ms ease;
+}
+
+.collection-tab .category-icon {
+  flex: none;
+  color: var(--gold);
+  filter: drop-shadow(0 1px 2px rgba(6, 3, 1, 0.95));
+  opacity: 0.7;
+  transition: opacity 240ms ease;
+}
+
+.collection-tab:hover {
+  color: var(--cream);
+}
+
+.collection-tab.is-active {
+  color: var(--ivory);
+}
+
+.collection-tab.is-active .category-icon {
+  opacity: 1;
+}
+
+/* A short gilt rule under the open collection. */
+.collection-tab::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: 1px;
+  background: var(--metal);
+  transform: scaleX(0);
+  transition: transform 300ms cubic-bezier(.3, .1, .2, 1);
+}
+
+.collection-tab.is-active::after {
+  transform: scaleX(1);
+}
+
+.collection-count {
+  font-family: var(--font-body), Georgia, serif;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--cream);
+}
+
+.collection-tab.is-active .collection-count {
+  color: var(--gold);
+}
+
+/* On a phone the corner is small: the figures say which is which, and the names are read aloud. */
+@media (max-width: 640px) {
+  .collections {
+    margin-right: 0;
+    padding-right: 6px;
+  }
+
+  .collection-tab {
+    padding: 0 7px;
+  }
+
+  .collection-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Switching collections lays the other shelf's books down softly. */
+.album-shelf .album-grid,
+.collection-empty {
+  animation: shelf-in 380ms ease both;
+}
+
+@keyframes shelf-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.collection-empty {
+  width: min(1180px, 100%);
+  margin: 26px auto 0;
+  padding: 18px clamp(16px, 4vw, 44px) 56px;
+  font-style: italic;
+  color: var(--cream);
+  text-shadow: 0 1px 3px rgba(6, 3, 1, 0.95);
+}
+
+/* A book moved to the other collection lifts away before the shelf closes up. */
+.album-card.is-moving {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.97);
+  transition: opacity 280ms ease, transform 280ms ease;
+  pointer-events: none;
+}
+
+/* ---- Choosing a book's collection ------------------------------------ */
+
+.category-picker {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.category-picker legend {
+  padding: 0;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.category-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.category-option {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(76, 56, 37, 0.32);
+  border-radius: 2px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 200ms ease, background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.category-option:hover {
+  background: rgba(76, 56, 37, 0.05);
+}
+
+.category-option.is-chosen {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  background: rgba(76, 56, 37, 0.07);
+}
+
+.category-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.category-option:has(input:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.category-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(76, 56, 37, 0.28);
+  border-radius: 50%;
+  color: rgba(76, 56, 37, 0.75);
+  transition: color 200ms ease, border-color 200ms ease, background-color 200ms ease;
+}
+
+.category-option.is-chosen .category-mark {
+  border-color: #9b7639;
+  background: radial-gradient(circle at 50% 35%, #fbf3df, #efdcb4);
+  color: var(--ink);
+}
+
+.category-words {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-name {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.1875rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.category-text {
+  font-size: 0.875rem;
+  line-height: 1.3;
+  color: rgba(76, 56, 37, 0.8);
+}
+
+@media (max-width: 420px) {
+  .category-options {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+/* The × in the album form's corner. Sticky, so a phone can close the form from anywhere in it. */
+.dialog-close {
+  position: sticky;
+  top: 10px;
+  z-index: 2;
+  float: right;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: 10px 10px -50px 0;
+  padding: 0;
+  border: 1px solid rgba(76, 56, 37, 0.28);
+  border-radius: 50%;
+  background: rgba(243, 234, 217, 0.92);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.dialog-close:hover {
+  border-color: var(--ink);
+  background: #fbf6ea;
+}
+
+.dialog-close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ---- The open book's motto, and the camera on Add photographs ---------- */
+
+.guide-motto {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  max-width: 100%;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.0625rem, 1.6vw, 1.375rem);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--ivory);
+  text-shadow: 0 1px 3px rgba(6, 3, 1, 0.95), 0 0 18px rgba(6, 3, 1, 0.8);
+}
+
+.guide-motto em {
+  color: var(--gold);
+}
+
+.guide-flourish {
+  flex: none;
+  color: var(--gold);
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 2px rgba(6, 3, 1, 0.9));
+}
+
+.tool-icon {
+  flex: none;
+  margin-right: 7px;
+  vertical-align: -3px;
+}
+
+@media (max-width: 640px) {
+  .guide-flourish {
+    width: 40px;
+  }
+
+  .guide-motto {
+    gap: 8px;
+  }
+}
+
+/* On the narrowest phones every pixel of the toolbar is needed; the word says it alone. */
+@media (max-width: 380px) {
+  .tool-icon {
+    display: none;
+  }
 }

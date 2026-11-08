@@ -31,6 +31,12 @@ const Toolbar = forwardRef(function Toolbar(
 
       <div className="toolbar-actions">
         <UploadButton className="tool strong" onFiles={onFiles} disabled={uploading}>
+          <svg className="tool-icon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false">
+            <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+              <path d="M4.5 8h3l1.4-2h6.2l1.4 2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+              <circle cx="12" cy="13.2" r="3.4" />
+            </g>
+          </svg>
           Add<span className="tool-long"> photographs</span>
         </UploadButton>
         <button type="button" className="tool" onClick={onArrange} disabled={photoCount < 2 || uploading}>

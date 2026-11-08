@@ -8,6 +8,8 @@ import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { WINDOW_POSITION, WINDOW_TARGET } from '@/lib/album/bookModel';
 import { surfaceMaterial } from '@/lib/album/proceduralTextures';
 import { cinema, precompile } from '@/lib/ambient/cinema';
+import Candelabra from './Candelabra';
+import { FLAME_FRAGMENT, FLAME_VERTEX } from './flame';
 import { prefersReducedMotion } from '@/lib/ambient/pointerField';
 
 /**
@@ -127,6 +129,8 @@ function BackWall() {
 
 const LAMP_SPOT = [-4.5, 3.3];
 const LAMP_SIZE = 2.9;
+/** Beside the open book, where the oil lamp is out of frame. */
+const CANDELABRA_SPOT = [-4.2, 0.55];
 
 /** `size` is the object's longest side in scene units, where 1 unit is about 8 cm. */
 const PROPS = [
@@ -135,7 +139,8 @@ const PROPS = [
   { file: 'mantel_clock_01', at: [-0.6, 5.2], size: 2.6, turn: -0.08, cast: true },
   { file: 'standing_picture_frame_01', at: [6.8, 3.2], size: 2.3, turn: -0.5, cast: true },
   { file: 'round_spectacles', at: [4.5, -0.75], size: 1.8, turn: 0.55, few: true, cast: true },
-  { file: 'vintage_pocket_watch', at: [-4.35, -1.15], size: 1.05, turn: -0.7, few: true, cast: true },
+  // Modelled standing on its rim. Laid back to rest almost flat, its dial tipped toward you.
+  { file: 'vintage_pocket_watch', at: [-4.35, -1.15], size: 1.05, turn: -0.7, lay: 0.26, few: true, cast: true },
   { file: 'magnifying_glass_01', at: [-4.9, 1.45], size: 2.1, turn: 1.1, cast: true },
   { file: 'seadogs_compass', at: [5.2, 1.55], size: 1.05, turn: 0.3, cast: true },
 ];
@@ -183,9 +188,10 @@ function plainMaterial(source) {
 
 /**
  * A model loaded, stood on the desk and sized. Models come in metres and Y-up, whereas this
- * scene is Z-up, so each is turned upright and then measured to find where its feet are.
+ * scene is Z-up, so each is turned upright (`lay`, a quarter turn) and then measured to find
+ * where its feet are. A smaller `lay` tips a model back toward lying flat.
  */
-function Prop({ file, at, size, turn, cast, post }) {
+function Prop({ file, at, size, turn, cast, post, lay = Math.PI / 2 }) {
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
@@ -203,7 +209,7 @@ function Prop({ file, at, size, turn, cast, post }) {
           return;
         }
         loaded = scene;
-        scene.rotation.x = Math.PI / 2;
+        scene.rotation.x = lay;
         scene.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(scene);
         const measured = box.getSize(new THREE.Vector3());
@@ -233,7 +239,7 @@ function Prop({ file, at, size, turn, cast, post }) {
       cancelled = true;
       if (loaded) disposeObject(loaded);
     };
-  }, [file, size, cast, post, gl, camera, rootScene, invalidate]);
+  }, [file, size, lay, cast, post, gl, camera, rootScene, invalidate]);
 
   if (!object) return null;
   return (
@@ -245,28 +251,12 @@ function Prop({ file, at, size, turn, cast, post }) {
 
 // ---- the oil lamp's flame ---------------------------------------------------------
 
-const FLAME_POINT = [LAMP_SPOT[0], LAMP_SPOT[1], LAMP_SIZE * 0.56];
 
-const FLAME_FRAGMENT = /* glsl */ `
-  varying vec2 vUv;
-  uniform float uTime;
-  uniform float uStrength;
-  void main() {
-    vec2 p = vUv * 2.0 - 1.0;
-    // Pinched to a point at the top, swaying more the higher it goes.
-    float rise = vUv.y;
-    p.x += sin(uTime * 7.0 + rise * 4.0) * 0.07 * rise + sin(uTime * 13.0) * 0.03 * rise;
-    // Never quite zero: a smoothstep with equal edges divides by zero, and one bad pixel
-    // becomes a black block once bloom has spread it.
-    float width = 0.002 + mix(0.5, 0.03, pow(max(rise, 0.0), 1.4)) * smoothstep(0.0, 0.14, rise);
-    float body = 1.0 - smoothstep(width * 0.25, width, abs(p.x));
-    vec3 colour = mix(vec3(6.0, 2.1, 0.5), vec3(9.0, 6.5, 2.6), (1.0 - smoothstep(0.05, 0.75, rise)) * body);
-    float halo = exp(-dot(p, p) * 2.4) * 0.14;
-    gl_FragColor = vec4(colour * body + vec3(1.0, 0.5, 0.18) * halo, (body + halo) * uStrength);
-  }
-`;
 
-function OilLampFlame({ controller }) {
+/** The oil lamp's flame. Its light swells when the book is shut, and sinks low when it opens. */
+function OilLampFlame({ controller, spot, size }) {
+  const FLAME_POINT = [spot[0], spot[1], size * 0.56];
+  const scale = size / LAMP_SIZE;
   const meshRef = useRef(null);
   const lightRef = useRef(null);
   const [still] = useState(() => prefersReducedMotion());
@@ -288,20 +278,24 @@ function OilLampFlame({ controller }) {
   return (
     <>
       <mesh ref={meshRef} position={FLAME_POINT} renderOrder={7}>
-        <planeGeometry args={[0.2, 0.42]} />
+        <planeGeometry args={[0.2 * scale, 0.42 * scale]} />
         <shaderMaterial
           uniforms={uniforms}
           transparent
           depthWrite={false}
           blending={THREE.AdditiveBlending}
-          vertexShader={/* glsl */ `
-            varying vec2 vUv;
-            void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-          `}
+          vertexShader={FLAME_VERTEX}
           fragmentShader={FLAME_FRAGMENT}
         />
       </mesh>
-      <pointLight ref={lightRef} position={[FLAME_POINT[0], FLAME_POINT[1] - 0.15, FLAME_POINT[2] + 0.2]} color="#ff9d54" distance={15} decay={1.45} intensity={8} />
+      <pointLight
+        ref={lightRef}
+        position={[FLAME_POINT[0], FLAME_POINT[1] - 0.15, FLAME_POINT[2] + 0.2]}
+        color="#ff9d54"
+        distance={15}
+        decay={1.45}
+        intensity={8}
+      />
     </>
   );
 }
@@ -509,7 +503,8 @@ export default function Room({ controller, settings }) {
       {props.map((prop) => (
         <Prop key={prop.file} {...prop} post={settings.post} />
       ))}
-      <OilLampFlame controller={controller} />
+      <OilLampFlame controller={controller} spot={LAMP_SPOT} size={LAMP_SIZE} />
+      <Candelabra at={CANDELABRA_SPOT} size={2.1} turn={0.2} />
       <LightBeam controller={controller} />
     </>
   );

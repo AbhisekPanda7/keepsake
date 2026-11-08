@@ -11,10 +11,11 @@ public final class AlbumDtos {
 
     public record ThemeDto(String colour, String material, String paper) {}
 
-    public record CreateAlbumRequest(String title, String description, ThemeDto theme) {}
+    /** A missing category means INDIVIDUAL. */
+    public record CreateAlbumRequest(String title, String description, ThemeDto theme, String category) {}
 
     /** Only the fields present are changed. */
-    public record UpdateAlbumRequest(String title, String description, ThemeDto theme) {}
+    public record UpdateAlbumRequest(String title, String description, ThemeDto theme, String category) {}
 
     public record PhotoOrderRequest(@NotNull List<UUID> ids) {}
 
@@ -42,19 +43,20 @@ public final class AlbumDtos {
             String title,
             String description,
             ThemeDto theme,
+            String category,
             long createdAt,
             long updatedAt,
             Long photoCount,
             List<PhotoResponse> photos) {
 
         static AlbumResponse summary(Album a, long photoCount) {
-            return new AlbumResponse(a.id.toString(), a.title, a.description, theme(a), a.createdAt.toEpochMilli(),
-                    a.updatedAt.toEpochMilli(), photoCount, null);
+            return new AlbumResponse(a.id.toString(), a.title, a.description, theme(a), a.category.name(),
+                    a.createdAt.toEpochMilli(), a.updatedAt.toEpochMilli(), photoCount, null);
         }
 
         static AlbumResponse full(Album a, List<PhotoResponse> photos) {
-            return new AlbumResponse(a.id.toString(), a.title, a.description, theme(a), a.createdAt.toEpochMilli(),
-                    a.updatedAt.toEpochMilli(), (long) photos.size(), photos);
+            return new AlbumResponse(a.id.toString(), a.title, a.description, theme(a), a.category.name(),
+                    a.createdAt.toEpochMilli(), a.updatedAt.toEpochMilli(), (long) photos.size(), photos);
         }
 
         private static ThemeDto theme(Album a) {

@@ -3,14 +3,16 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { playSound, setWhoosh } from '@/lib/ambient/sound';
 import { formatUpdated, photoCountText } from '@/lib/album/photoInfo';
+import { CATEGORIES, otherCategory } from '@/lib/album/categories';
 import { resolveTheme } from '@/lib/album/themes';
 import BookCover from './BookCover';
 
 /** One album lying on the table: the book itself, its label and a small menu. */
-const AlbumCard = memo(function AlbumCard({ album, index, leaving, onOpen, onEdit, onDuplicate, onDelete }) {
+const AlbumCard = memo(function AlbumCard({ album, index, leaving, moving, onOpen, onEdit, onDuplicate, onMove, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const theme = useMemo(() => resolveTheme(album.theme), [album.theme]);
+  const moveTo = otherCategory(album.category);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -147,7 +149,11 @@ const AlbumCard = memo(function AlbumCard({ album, index, leaving, onOpen, onEdi
   };
 
   return (
-    <li className={`album-card${leaving ? ' is-leaving' : ''}`} data-album-id={album.id} style={{ '--i': Math.min(index, 11) }}>
+    <li
+      className={`album-card${leaving ? ' is-leaving' : ''}${moving ? ' is-moving' : ''}`}
+      data-album-id={album.id}
+      style={{ '--i': Math.min(index, 11) }}
+    >
       <button
         ref={openRef}
         type="button"
@@ -199,6 +205,9 @@ const AlbumCard = memo(function AlbumCard({ album, index, leaving, onOpen, onEdi
               </button>
               <button type="button" role="menuitem" onClick={() => choose(onDuplicate)}>
                 Duplicate
+              </button>
+              <button type="button" role="menuitem" onClick={() => choose((chosen) => onMove(chosen, moveTo))}>
+                Move to {CATEGORIES[moveTo].name}
               </button>
               <button type="button" role="menuitem" className="is-danger" onClick={() => choose(onDelete)}>
                 Delete

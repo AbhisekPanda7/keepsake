@@ -2,6 +2,8 @@ package com.keepsake.album;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -31,6 +33,11 @@ public class Album {
 
     @Column(name = "theme_paper", nullable = false)
     public String themePaper;
+
+    /** Which collection of the library it's kept in. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    public AlbumCategory category = AlbumCategory.DEFAULT;
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;

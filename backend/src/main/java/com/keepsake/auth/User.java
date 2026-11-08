@@ -25,4 +25,8 @@ public class User {
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
+
+    /** Every sign-in token carries this. Raising it ends all sign-ins made before. */
+    @Column(name = "session_version", nullable = false)
+    public int sessionVersion;
 }

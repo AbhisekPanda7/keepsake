@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BookCover from '@/components/Library/BookCover';
+import { DEFAULT_CATEGORY, normalizeCategory } from '@/lib/album/categories';
 import { formatDay } from '@/lib/album/photoInfo';
 import { COVER_COLOURS, COVER_MATERIALS, DEFAULT_THEME, PAPERS, THEME_PRESETS, normalizeTheme, resolveTheme } from '@/lib/album/themes';
 import { DEFAULT_TITLE, MAX_DESCRIPTION_LENGTH, MAX_TITLE_LENGTH } from '@/lib/storage/albumStore';
+import CategoryPicker from './CategoryPicker';
 
 function Choices({ legend, options, value, onChange, renderMark }) {
   return (
@@ -26,7 +28,7 @@ function Choices({ legend, options, value, onChange, renderMark }) {
 /**
  * Creating an album and changing one are the same form. The book beside it shows every
  * choice as it is made, so you are choosing how the album looks rather than filling in
- * settings. `album` is null when creating.
+ * settings. `album` is null when creating, and a new album starts in the Individual collection.
  */
 export default function AlbumEditor({ album, onSave, onCancel }) {
   const ref = useRef(null);
@@ -35,6 +37,8 @@ export default function AlbumEditor({ album, onSave, onCancel }) {
   const [title, setTitle] = useState(album?.title ?? '');
   const [description, setDescription] = useState(album?.description ?? '');
   const [theme, setTheme] = useState(() => normalizeTheme(album?.theme ?? DEFAULT_THEME));
+  // A new album is Individual unless it's changed here.
+  const [category, setCategory] = useState(() => (album ? normalizeCategory(album.category) : DEFAULT_CATEGORY));
 
   useEffect(() => {
     const dialog = ref.current;
@@ -59,11 +63,17 @@ export default function AlbumEditor({ album, onSave, onCancel }) {
         onCancel();
       }}
     >
+      {/* Closes without saving, like Cancel and Escape. It stays in the corner while the form scrolls. */}
+      <button type="button" className="dialog-close" aria-label="Close without saving" onClick={onCancel}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      </button>
       <form
         className="album-editor-form"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave({ title, description, theme });
+          onSave({ title, description, theme, category });
         }}
       >
         <div className="album-editor-preview">
@@ -80,6 +90,8 @@ export default function AlbumEditor({ album, onSave, onCancel }) {
 
         <div className="album-editor-fields">
           <h2 id="album-editor-heading">{heading}</h2>
+
+          <CategoryPicker value={category} onChange={setCategory} />
 
           <label className="field">
             <span>Title</span>

@@ -5,6 +5,7 @@
  * canvas is built once on first use, per theme, and then shared.
  */
 import { PAGE_HEIGHT, PAGE_WIDTH } from './bookModel.js';
+import { atCorners, cornerScroll, crest, divider, foilFill, pressed } from './ornaments.js';
 
 const cache = new Map();
 
@@ -803,6 +804,80 @@ export function endpaperCanvas(colour) {
         drawDiamond(ctx, x, y, step * 0.05, `rgba(${foil},0.5)`);
       }
     }
+    return canvas;
+  });
+}
+
+/**
+ * The lining of each board: the cover's own leather, a shade deeper, with gilt tooling.
+ * Inside the front board a crest and the album's maker's mark sit in the middle, as in a
+ * presentation album; inside the back board only the border and corners. Needs the web
+ * fonts and the scanned leather, so it's drawn once coverArtReady() has resolved.
+ */
+export function liningCanvas(colour, material, { crest: withCrest }) {
+  const scanned = material === 'leather' && hasLeather();
+  return once(`lining:${colour.rgb}:${colour.foil}:${material}:${scanned}:${withCrest}`, () => {
+    const w = 1024;
+    const h = Math.round(w * COVER_ASPECT);
+    const canvas = makeCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+
+    // A deeper, richer tone of the cover, so the gilt glows against it.
+    const deeper = { ...colour, rgb: colour.rgb.map((c) => Math.round(c * 0.72)) };
+    const base = coverBaseCanvas(deeper, material);
+    tile(ctx, base, w, h, GRAIN_SCALE[material] ?? 1);
+    const vignette = ctx.createRadialGradient(w / 2, h * 0.46, w * 0.18, w / 2, h / 2, w * 0.82);
+    vignette.addColorStop(0, 'rgba(255,214,150,0.07)');
+    vignette.addColorStop(0.6, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(8,3,0,0.42)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+
+    const gold = foilFill(ctx, colour.foil, w, h);
+    ctx.strokeStyle = gold;
+    ctx.fillStyle = gold;
+    const unit = w / 1000;
+
+    pressed(ctx, 2.2 * unit, () => {
+      // A double rule all round.
+      const outer = w * 0.055;
+      ctx.lineWidth = 5 * unit;
+      ctx.strokeRect(outer, outer, w - outer * 2, h - outer * 2);
+      ctx.lineWidth = 1.8 * unit;
+      const inner = outer + 14 * unit;
+      ctx.strokeRect(inner, inner, w - inner * 2, h - inner * 2);
+      // Scrollwork filling each corner of the frame.
+      const c = inner + 10 * unit;
+      atCorners(ctx, c, c, w - c, h - c, () => cornerScroll(ctx, w * 0.27, 3 * unit));
+    });
+
+    if (!withCrest) return canvas;
+
+    const cx = w / 2;
+    pressed(ctx, 2 * unit, () => {
+      crest(ctx, cx, h * 0.4, w * 0.085, 3.4 * unit);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = `italic 600 ${w * 0.118}px ${fontFamily()}`;
+      ctx.fillText('Keepsake', cx, h * 0.565);
+
+      const small = w * 0.034;
+      ctx.font = `500 ${small}px ${fontFamily()}`;
+      if ('letterSpacing' in ctx) ctx.letterSpacing = `${small * 0.14}px`;
+      ctx.fillText('Photo Album', cx, h * 0.618);
+      if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+      const half = ctx.measureText('Photo Album').width / 2 + small * 0.9;
+      ctx.lineWidth = 1.8 * unit;
+      ctx.beginPath();
+      ctx.moveTo(cx - half - w * 0.05, h * 0.607);
+      ctx.lineTo(cx - half, h * 0.607);
+      ctx.moveTo(cx + half, h * 0.607);
+      ctx.lineTo(cx + half + w * 0.05, h * 0.607);
+      ctx.stroke();
+
+      divider(ctx, cx, h * 0.67, w * 0.15, 2 * unit, 'diamond');
+    });
     return canvas;
   });
 }

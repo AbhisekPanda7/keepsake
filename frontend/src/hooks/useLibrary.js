@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { CATEGORIES } from '@/lib/album/categories';
 import {
   createAlbum as storeCreate,
   deleteAlbum as storeDelete,
@@ -64,6 +65,12 @@ export function useLibrary() {
     [guarded],
   );
   const deleteAlbum = useCallback((id) => guarded(() => storeDelete(id), 'Album deleted.'), [guarded]);
+  /** Only the collection changes: the album keeps its id, photographs, captions, order and cover. */
+  const moveAlbum = useCallback(
+    (album, category) =>
+      guarded(() => saveAlbum(album.id, { category }), `“${album.title}” moved to ${CATEGORIES[category].name}.`),
+    [guarded],
+  );
 
-  return { status, albums, notice, dismissNotice, createAlbum, saveDetails, duplicateAlbum, deleteAlbum };
+  return { status, albums, notice, dismissNotice, createAlbum, saveDetails, duplicateAlbum, moveAlbum, deleteAlbum };
 }

@@ -7,7 +7,16 @@ import { useEffect, useRef } from 'react';
  * Escape handling and inert background. Focus starts on Keep so that a stray Enter
  * can't delete anything.
  */
-export default function ConfirmationDialog({ title, message, confirmLabel, onConfirm, onCancel }) {
+export default function ConfirmationDialog({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  cancelLabel = 'Keep',
+  // Red for anything that removes something; plain ink for an action that loses nothing.
+  confirmTone = 'danger',
+}) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -32,9 +41,9 @@ export default function ConfirmationDialog({ title, message, confirmLabel, onCon
       <p>{message}</p>
       <div className="dialog-actions">
         <button type="button" className="paper-btn" autoFocus onClick={onCancel}>
-          Keep
+          {cancelLabel}
         </button>
-        <button type="button" className="paper-btn danger" onClick={onConfirm}>
+        <button type="button" className={`paper-btn ${confirmTone}`} onClick={onConfirm}>
           {confirmLabel}
         </button>
       </div>

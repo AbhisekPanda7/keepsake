@@ -28,11 +28,18 @@ public class SupabasePhotoStorage implements PhotoStorage {
             throw new IllegalStateException("STORAGE_TYPE=supabase needs SUPABASE_URL and SUPABASE_SERVICE_KEY.");
         }
         this.bucket = config.supabaseBucket();
-        this.client = builder
+        String key = config.supabaseKey().trim();
+        RestClient.Builder configured = builder
                 .baseUrl(config.supabaseUrl().replaceAll("/+$", "") + "/storage/v1")
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + config.supabaseKey())
-                .defaultHeader("apikey", config.supabaseKey())
-                .build();
+                .defaultHeader("apikey", key);
+        // A legacy service_role key is a JWT and is also sent as the bearer token. A newer
+        // secret key (sb_secret_...) isn't a JWT, and Storage refuses it as one.
+        if (isLegacyJwt(key)) configured.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + key);
+        this.client = configured.build();
+    }
+
+    static boolean isLegacyJwt(String key) {
+        return key.startsWith("eyJ") && key.split("\\.", -1).length == 3;
     }
 
     @Override

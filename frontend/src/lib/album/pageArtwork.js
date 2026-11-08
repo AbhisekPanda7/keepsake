@@ -6,6 +6,7 @@
  */
 import { PAGE_HEIGHT, PAGE_WIDTH } from './bookModel.js';
 import { capturedDate, wrapText } from './photoInfo.js';
+import { atCorners, blossomSpray, cartouche, cornerScroll, divider, foilFill, landscapeSketch } from './ornaments.js';
 import { fitText, fontFamily, fontsReady, handFontFamily, makeCanvas, paperGrainCanvas, paperReady, paperToothCanvas, seededRandom } from './surfaces.js';
 
 const ROUGH_PAPER = 235;
@@ -132,55 +133,16 @@ function drawPaper(ctx, w, h, desc, paper) {
   }
 }
 
-/** A frame pressed into the sheet with no ink, seen only as its two edges take the light. */
-function drawBlindFrame(ctx, w, h, paper) {
-  const x = w * FRAME.side;
-  const y = h * FRAME.top;
-  const fw = w - x * 2;
-  const fh = h - y - h * FRAME.foot;
-  const dark = isDarkPaper(paper);
-  ctx.lineWidth = Math.max(1, w * 0.0014);
-  ctx.strokeStyle = dark ? 'rgba(0,0,0,0.5)' : `rgba(${paper.faint},0.17)`;
-  ctx.strokeRect(x, y, fw, fh);
-  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,253,245,0.62)';
-  ctx.strokeRect(x + ctx.lineWidth, y + ctx.lineWidth, fw, fh);
-}
-
 function drawFolio(ctx, w, h, desc, paper) {
   const size = w * 0.028;
   ctx.font = `600 ${size}px ${fontFamily()}`;
   setTracking(ctx, 0.12, size);
   ctx.fillStyle = paper.inkSoft;
   ctx.textBaseline = 'alphabetic';
-  const inset = w * (FRAME.side + 0.03);
-  ctx.textAlign = desc.spineOnRight ? 'left' : 'right';
-  ctx.fillText(String(desc.sideIndex + 1), desc.spineOnRight ? inset : w - inset, h * (1 - FRAME.foot) - h * 0.016);
+  // Centred at the foot, inside the gilt border, clear of the scrollwork in its corners.
+  ctx.textAlign = 'center';
+  ctx.fillText(String(desc.sideIndex + 1), w / 2, h * (1 - FRAME.foot) - h * 0.024);
   setTracking(ctx, 0, size);
-}
-
-function drawDiamond(ctx, x, y, r) {
-  ctx.beginPath();
-  ctx.moveTo(x, y - r);
-  ctx.lineTo(x + r, y);
-  ctx.lineTo(x, y + r);
-  ctx.lineTo(x - r, y);
-  ctx.closePath();
-  ctx.fill();
-}
-
-/** A hairline either side of a small diamond: the one ornament used throughout. */
-function drawRule(ctx, cx, y, halfWidth, w, colour) {
-  ctx.strokeStyle = colour;
-  ctx.fillStyle = colour;
-  ctx.lineWidth = Math.max(0.75, w * 0.001);
-  const gap = w * 0.016;
-  ctx.beginPath();
-  ctx.moveTo(cx - halfWidth, y);
-  ctx.lineTo(cx - gap, y);
-  ctx.moveTo(cx + gap, y);
-  ctx.lineTo(cx + halfWidth, y);
-  ctx.stroke();
-  drawDiamond(ctx, cx, y, w * 0.0052);
 }
 
 /**
@@ -232,39 +194,125 @@ function emptyMount(ctx, w, h, paper) {
   ctx.fillText('a place for a memory', w / 2, top + boxH / 2);
 }
 
+/**
+ * The metal used on the pages: the cover's own foil, so that gold covers have gilt pages
+ * and silver ones silver. A dark foil (the Sand cover's brown) would look like a smudge on
+ * paper, so those pages are gilt instead.
+ */
+function pageFoil(paper) {
+  const foil = paper.foil ?? '#b8893a';
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(foil.slice(i, i + 2), 16));
+  if (0.299 * r + 0.587 * g + 0.114 * b < 110) return isDarkPaper(paper) ? '#d2ae66' : '#b8893a';
+  // On light paper, pale foil needs deepening to read at all; gold is deepened the same way.
+  return isDarkPaper(paper) ? foil : deepen(foil, 0.12);
+}
+
+function deepen(hex, amount) {
+  return `#${[1, 3, 5]
+    .map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount)).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+/**
+ * The gilt double rule around a page, on all four sides, with scrollwork in its corners.
+ * The title page has larger corners; photograph pages keep them small, out of the picture's way.
+ */
+function drawGiltFrame(ctx, w, h, paper, cornerSize) {
+  const unit = w / 1000;
+  const dark = isDarkPaper(paper);
+  const gold = foilFill(ctx, pageFoil(paper), w, h);
+  const left = w * FRAME.side;
+  const top = h * FRAME.top;
+  const right = w - left;
+  const bottom = h * (1 - FRAME.foot);
+  ctx.save();
+  ctx.strokeStyle = gold;
+  ctx.fillStyle = gold;
+  ctx.globalAlpha = dark ? 0.95 : 0.88;
+  ctx.lineWidth = 3.2 * unit;
+  ctx.strokeRect(left, top, right - left, bottom - top);
+  ctx.lineWidth = 1.2 * unit;
+  const inset = 11 * unit;
+  ctx.strokeRect(left + inset, top + inset, right - left - inset * 2, bottom - top - inset * 2);
+  const c = inset + 8 * unit;
+  atCorners(ctx, left + c, top + c, right - c, bottom - c, () => cornerScroll(ctx, w * cornerSize, 2.2 * unit));
+  ctx.restore();
+  return { gold, left, top, right, bottom };
+}
+
+/** Words for the title page when the album has none of its own. */
+const DEFAULT_DEDICATION = ['A collection of special moments', 'and cherished photographs'];
+
+/**
+ * The title page of a presentation album: a gilt border with scrollwork in its corners,
+ * sprays of pressed blossom, the title, a heart between two fine rules, a dedication, a
+ * small plaque giving the year the memories begin, and a faint pencil landscape.
+ */
 function drawTitlePage(ctx, w, h, desc, paper) {
   const cx = w / 2;
+  const unit = w / 1000;
+  const dark = isDarkPaper(paper);
+  const random = seededRandom(hash(`title${desc.title}`));
+  // The gilt border, with scrollwork filling each corner.
+  const { gold, left, top, right, bottom } = drawGiltFrame(ctx, w, h, paper, 0.2);
+
+  // Pressed blossom: one spray falling from the top right, one rising at the bottom left.
+  blossomSpray(ctx, right - w * 0.07, top + h * 0.035, w * 0.34, Math.PI * 0.78, random);
+  blossomSpray(ctx, left + w * 0.06, bottom - h * 0.05, w * 0.32, -Math.PI * 0.24, random);
+
+  // A faint pencil landscape low on the right, as if sketched before the photographs came.
+  ctx.save();
+  ctx.globalAlpha = dark ? 0.16 : 0.2;
+  landscapeSketch(ctx, cx + w * 0.02, bottom - h * 0.075, w * 0.36, paper.inkSoft);
+  ctx.restore();
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = paper.ink;
-  ctx.font = `500 ${w * 0.092}px ${fontFamily()}`;
-  fitText(ctx, desc.title, w * 0.72);
-  ctx.fillText(desc.title, cx, h * 0.33);
+  ctx.font = `italic 600 ${w * 0.112}px ${fontFamily()}`;
+  fitText(ctx, desc.title, w * 0.7);
+  ctx.fillText(desc.title, cx, h * 0.31);
 
-  drawRule(ctx, cx, h * 0.395, w * 0.13, w, paper.inkSoft);
+  ctx.save();
+  ctx.strokeStyle = gold;
+  ctx.fillStyle = gold;
+  divider(ctx, cx, h * 0.375, w * 0.2, 1.6 * unit, 'heart');
+  ctx.restore();
 
-  let y = h * 0.45;
-  const lineStep = h * 0.043;
+  let y = h * 0.43;
+  const lineStep = h * 0.042;
   ctx.fillStyle = paper.inkSoft;
-  if (desc.description) {
-    ctx.font = `italic 500 ${w * 0.037}px ${fontFamily()}`;
-    const lines = wrapText(desc.description, (t) => ctx.measureText(t).width, w * 0.64, 4);
-    for (const line of lines) {
-      ctx.fillText(line, cx, y);
-      y += lineStep;
-    }
+  ctx.font = `italic 500 ${w * 0.04}px ${fontFamily()}`;
+  const words = desc.description
+    ? wrapText(desc.description, (t) => ctx.measureText(t).width, w * 0.62, 4)
+    : DEFAULT_DEDICATION;
+  for (const line of words) {
+    ctx.fillText(line, cx, y);
+    y += lineStep;
   }
-  if (desc.photoCount === 0) {
-    ctx.font = `italic 500 ${w * 0.033}px ${fontFamily()}`;
-    ctx.fillText('These pages are waiting', cx, y);
-    ctx.fillText('for your first photographs', cx, y + lineStep);
-  } else {
-    // Set quietly at the foot of the page, as a book states its edition.
+
+  // The plaque: the year these memories begin.
+  const plaqueY = Math.max(y + h * 0.045, h * 0.56);
+  ctx.save();
+  ctx.strokeStyle = gold;
+  ctx.fillStyle = gold;
+  cartouche(ctx, cx, plaqueY, w * 0.34, h * 0.062, 1.4 * unit);
+  ctx.restore();
+  ctx.fillStyle = paper.ink;
+  const plaqueSize = w * 0.034;
+  ctx.font = `500 ${plaqueSize}px ${fontFamily()}`;
+  setTracking(ctx, 0.04, plaqueSize);
+  ctx.fillText(`•  Since ${desc.since}  •`, cx, plaqueY + plaqueSize * 0.06);
+  setTracking(ctx, 0, plaqueSize);
+
+  ctx.fillStyle = paper.inkSoft;
+  if (desc.photoCount > 0) {
+    // Set quietly under the plaque, as a book states its edition.
     const size = w * 0.0215;
     ctx.font = `600 ${size}px ${fontFamily()}`;
     setTracking(ctx, 0.2, size);
     const noun = desc.photoCount === 1 ? 'photograph' : 'photographs';
-    ctx.fillText(`${desc.photoCount} ${noun}`.toUpperCase(), cx, h * 0.86);
+    ctx.fillText(`${desc.photoCount} ${noun}`.toUpperCase(), cx, plaqueY + h * 0.065);
     setTracking(ctx, 0, size);
   }
 }
@@ -438,7 +486,8 @@ export async function composePage(desc, loadBitmap, paper) {
     // Nothing is printed on the back of a one-sided leaf.
     return { canvas, roughCanvas };
   }
-  drawBlindFrame(ctx, w, h, paper);
+  // Every page has the gilt border; the title page draws its own, with larger corners.
+  if (desc.kind !== 'title') drawGiltFrame(ctx, w, h, paper, 0.09);
   if (desc.kind === 'title') {
     drawTitlePage(ctx, w, h, desc, paper);
   } else if (bitmap) {

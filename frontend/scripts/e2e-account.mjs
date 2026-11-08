@@ -5,18 +5,20 @@
  * Needs the backend and an account-mode build running:
  *   cd backend && mvnw spring-boot:test-run                    (API on :8081)
  *   NEXT_PUBLIC_API_URL=http://localhost:8081 next build && next start -p 3001
- *   node scripts/e2e-account.mjs [site] [api] [photo folder]
+ *   node scripts/e2e-account.mjs [site] [api] [photo folder] [mail outbox folder]
  *
  * Every run makes a new throwaway account, so it can be repeated against the same backend.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const SITE = process.argv[2] ?? 'http://localhost:3001';
 const API = process.argv[3] ?? 'http://localhost:8081';
 const PHOTO_DIR = resolve(process.argv[4] ?? '../backend/data/photos');
+// The local backend writes emails here instead of sending them (see LocalBackend.java).
+const OUTBOX = resolve(process.argv[5] ?? '../backend/data/outbox');
 const CHROME = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PORT = 9377;
 
@@ -109,7 +111,35 @@ const LIBRARY_READY = `document.querySelector('.library-intro .tool') && !docume
 const ALBUM_READY = `location.pathname.startsWith('/albums/') && document.querySelector('.toolbar') && document.querySelector('canvas.is-shown')`;
 
 const email = `check-${Date.now()}@example.test`;
-const password = `pw-${Math.random().toString(36).slice(2)}-local`;
+let password = `pw-${Math.random().toString(36).slice(2)}-local`;
+
+const emailsTo = (to) => (existsSync(OUTBOX) ? readdirSync(OUTBOX).sort() : [])
+  .map((f) => readFileSync(join(OUTBOX, f), 'utf8')).filter((t) => t.startsWith(`To: ${to}\n`));
+const awaitResetCode = async (to, already) => {
+  for (let i = 0; i < 100; i += 1) {
+    const all = emailsTo(to);
+    if (all.length > already) return all.at(-1).match(/reset-password#token=([A-Za-z0-9_-]{43})/)?.[1] ?? null;
+    await sleep(100);
+  }
+  return null;
+};
+const tabs = () => js(`return [...document.querySelectorAll('.collection-tab')].map((t) => ({ id: t.id.replace('collection-', ''),
+  name: t.querySelector('.collection-name').textContent, count: Number(t.querySelector('.collection-count').textContent),
+  selected: t.getAttribute('aria-selected') === 'true' }));`);
+const shelf = () => js("return [...document.querySelectorAll('.album-card h2')].map((h) => h.textContent);");
+const backToLibrary = async () => {
+  await js("document.querySelector('.back-link').click();");
+  await waitFor(`location.pathname === '/' && ${LIBRARY_READY} && document.querySelector('.collection-tab')`);
+  await sleep(500);
+};
+const moveFromMenu = async (albumId, label) => {
+  await js(`document.querySelector('[data-album-id="${albumId}"] .album-menu-button').click();`);
+  await sleep(200);
+  await js(`[...document.querySelectorAll('[data-album-id="${albumId}"] .album-menu-list button')].find((b) => b.textContent === ${JSON.stringify(label)}).click();`);
+  // The notice names where it went, so an earlier move's notice can't be mistaken for this one.
+  await waitFor(`document.querySelector('.notice')?.textContent.includes(${JSON.stringify(label.replace('Move to', 'moved to'))})`, 15000);
+  await sleep(300);
+};
 
 try {
   section('Signing up');
@@ -129,12 +159,25 @@ try {
   await waitFor(LIBRARY_READY);
   const signedIn = await session();
   check('creating an account signs you in', Boolean(signedIn?.token) && signedIn.user.email === email);
-  check('the header says who is signed in', (await js("return document.querySelector('.account-who')?.textContent;")) === 'Album Tester');
+  check('the corner shows Sign out, without a name beside it', await js("return Boolean(document.querySelector('.account-out')) && !document.querySelector('.account-who');"));
   const token = signedIn.token;
   const owner = signedIn.user.id;
 
+  section('A new account starts with one album');
+  await waitFor("document.querySelector('.album-card h2')");
+  const starter = (await api('/api/albums', token)).body;
+  check('a new account has an empty Our Memories album', starter.length === 1 && starter[0].title === 'Our Memories' && starter[0].photoCount === 0);
+  check('kept in Individual', starter[0].category === 'INDIVIDUAL');
+  check('the library opens on it, with the plain heading', (await js("return document.querySelector('.library-intro h1').textContent + ' | ' + document.querySelector('.album-card h2').textContent;")) === 'Your albums | Our Memories');
+  // The rest of this run starts from an empty library, so the starter album is deleted.
+  await api(`/api/albums/${starter[0].id}`, token, 'DELETE');
+  await send('Page.reload');
+  await waitFor(LIBRARY_READY);
+  await sleep(400);
+  check('an empty library keeps the same quiet heading', await js("return document.querySelector('.library-intro h1').textContent === 'Your albums' && document.querySelector('.library-intro p').textContent === 'No albums yet';"));
+
   section('An album kept in the account');
-  await clickButton('Begin your first album');
+  await clickButton('New album');
   await sleep(300);
   await setField('dialog[open] input[name="album-title"]', 'Kept on the server');
   await clickButton('Create album');
@@ -223,7 +266,77 @@ try {
   check('it can no longer be opened', (await api(`/api/albums/${albumId}`, token)).status === 404);
   check('the server still keeps its photographs', album.photos.every((p) => existsSync(join(PHOTO_DIR, owner, albumId, p.id))));
 
+  section('Individual and Couple collections');
+  let t = await tabs();
+  check('the library has Individual and Couple collections', t.map((x) => x.name).join() === 'Individual,Couple', JSON.stringify(t));
+  check('it opens on Individual', t[0].selected && !t[1].selected);
+  await clickButton('New album');
+  await sleep(300);
+  check('the form has a close button', await js("return Boolean(document.querySelector('dialog[open] .dialog-close'));"));
+  await js("document.querySelector('dialog[open] .dialog-close').click();");
+  await sleep(300);
+  check('which closes it without making an album', !(await js("return Boolean(document.querySelector('dialog[open]'));")) && (await api('/api/albums', token)).body.length === 0);
+  await clickButton('New album');
+  await sleep(300);
+  check('a new album starts as Individual', await js("return document.querySelector('dialog[open] input[name=album-category][value=INDIVIDUAL]').checked && !document.querySelector('dialog[open] input[name=album-category][value=COUPLE]').checked;"));
+  check('both choices are explained', (await js("return document.querySelector('dialog[open] .category-picker').textContent;")).includes('Shared memories and special moments together.'));
+  await setField('dialog[open] input[name="album-title"]', 'Just mine');
+  await clickButton('Create album');
+  await waitFor(ALBUM_READY);
+  const mineId = await js('return decodeURIComponent(location.pathname.split("/")[2]);');
+  check('left unchanged, it is saved as Individual', (await api(`/api/albums/${mineId}`, token)).body?.category === 'INDIVIDUAL');
+  await backToLibrary();
+  check('and it is on the Individual shelf', (await shelf()).join() === 'Just mine');
+
+  await clickButton('New album');
+  await sleep(300);
+  await js("document.querySelector('dialog[open] input[name=album-category][value=COUPLE]').click();");
+  await sleep(100);
+  check('Couple can be chosen instead', await js("return document.querySelector('dialog[open] .category-option.is-chosen input').value === 'COUPLE';"));
+  await setField('dialog[open] input[name="album-title"]', 'Ours');
+  await clickButton('Create album');
+  await waitFor(ALBUM_READY);
+  const oursId = await js('return decodeURIComponent(location.pathname.split("/")[2]);');
+  check('a Couple album is saved as Couple', (await api(`/api/albums/${oursId}`, token)).body?.category === 'COUPLE');
+  await backToLibrary();
+  t = await tabs();
+  check('back in the library, its shelf is open', t[1].selected && (await shelf()).join() === 'Ours', JSON.stringify(t));
+  check('each collection counts its own albums', t[0].count === 1 && t[1].count === 1);
+  await js("document.querySelector('#collection-INDIVIDUAL').click();");
+  await sleep(500);
+  check('Individual shows only Individual albums', (await shelf()).join() === 'Just mine');
+  const coupleOnly = (await api('/api/albums?category=COUPLE', token)).body;
+  check('the server lists one collection on request', coupleOnly.length === 1 && coupleOnly[0].id === oursId);
+
+  const beforeMove = (await api(`/api/albums/${mineId}`, token)).body;
+  await moveFromMenu(mineId, 'Move to Couple');
+  check('a moved album leaves its old shelf', (await shelf()).length === 0);
+  check('the empty shelf says so', (await js("return document.querySelector('.collection-empty')?.textContent ?? '';")).includes('No individual albums yet'));
+  const afterMove = (await api(`/api/albums/${mineId}`, token)).body;
+  check('it is now Couple, and otherwise unchanged', afterMove.category === 'COUPLE'
+    && JSON.stringify({ ...afterMove, category: 'INDIVIDUAL' }) === JSON.stringify(beforeMove));
+  await js("document.querySelector('#collection-COUPLE').click();");
+  await sleep(500);
+  check('and it is on the Couple shelf', (await shelf()).sort().join() === 'Just mine,Ours');
+  await moveFromMenu(oursId, 'Move to Individual');
+  check('moving back the other way works too', (await api(`/api/albums/${oursId}`, token)).body.category === 'INDIVIDUAL' && (await shelf()).join() === 'Just mine');
+  await send('Page.reload');
+  await waitFor(`${LIBRARY_READY} && document.querySelector('.album-card')`);
+  await sleep(400);
+  check('the open collection is remembered after a reload', (await tabs())[1].selected && (await shelf()).join() === 'Just mine');
+
   section('Signing out and in');
+  check('Sign out takes a real click, not just a scripted one', await js("const b = document.querySelector('.account-out'); const r = b.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === b;"));
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('dialog[open] h2')?.textContent === 'Sign out?'");
+  check('signing out asks first', true);
+  check('and says whose account it is', (await js("return document.querySelector('dialog[open] p').textContent;")).includes(`Album Tester (${email})`));
+  check('focus starts on Stay signed in', (await js('return document.activeElement.textContent;')) === 'Stay signed in');
+  await clickButton('Stay signed in');
+  await sleep(200);
+  check('Stay signed in keeps you signed in', Boolean((await session())?.token) && !(await js("return document.querySelector('dialog[open]');")));
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('dialog[open] h2')?.textContent === 'Sign out?'");
   await clickButton('Sign out');
   await waitFor("document.querySelector('.account-card')");
   check('signing out returns to the sign-in screen', (await session()) === null);
@@ -236,6 +349,75 @@ try {
   await clickButton('Sign in');
   await waitFor(LIBRARY_READY);
   check('signing in again opens your library', Boolean((await session())?.token));
+
+  section('Forgetting the password');
+  const tokenBeforeReset = (await session()).token;
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('dialog[open] h2')?.textContent === 'Sign out?'");
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('.account-card')");
+  check('the sign-in screen offers Forgot Password?', (await js("return document.querySelector('.account-forgot a')?.textContent;")) === 'Forgot Password?');
+  await setField('input[name=email]', email);
+  await js("document.querySelector('.account-forgot a').click();");
+  await waitFor("location.pathname === '/forgot-password' && document.querySelector('.account-card h1')?.textContent.startsWith('Forgotten')");
+  check('it opens its own screen', true);
+  check('carrying over the email already typed', (await js("return document.querySelector('input[name=email]').value;")) === email);
+  const already = emailsTo(email).length;
+  await clickButton('Send Reset Link');
+  await waitFor("document.querySelector('.account-sent')", 20000);
+  const sentMessage = await js("return document.querySelector('.account-sent .account-lede').textContent;");
+  check('a confirmation that reveals nothing', sentMessage.startsWith('If that email belongs to a Keepsake account'), sentMessage);
+  await clickButton('Use a different email');
+  await setField('input[name=email]', `nobody-${Date.now()}@example.test`);
+  await clickButton('Send Reset Link');
+  await waitFor("document.querySelector('.account-sent')", 20000);
+  check('an unknown email gets exactly the same answer', (await js("return document.querySelector('.account-sent .account-lede').textContent;")) === sentMessage);
+  const code = await awaitResetCode(email, already);
+  check('the email arrives, with a reset link', Boolean(code));
+
+  await go(`${SITE}/reset-password#token=${'x'.repeat(43)}`);
+  await waitFor("document.querySelector('.account-card h1') && !document.querySelector('.account-card[aria-busy]')");
+  check('a made-up link is refused kindly', (await js("return document.querySelector('.account-card h1').textContent;")) === 'This link can’t be used');
+  await go(`${SITE}/reset-password#token=${code}`);
+  await waitFor("document.querySelector('input[name=new-password]')", 20000);
+  check('the real link opens the form', true);
+  check('the code leaves the address bar', await js("return location.hash === '' && location.pathname === '/reset-password';"));
+  await setField('input[name=new-password]', 'abc');
+  await sleep(100);
+  check('a weak password is shown as too weak', (await js("return document.querySelector('.password-meter-text').textContent;")).startsWith('Too weak'));
+  check('and can’t be submitted', await js("return document.querySelector('.account-submit').disabled;"));
+  const newPassword = `new ${Math.random().toString(36).slice(2)} 2nd`;
+  await setField('input[name=new-password]', newPassword);
+  await setField('input[name=confirm-password]', `${newPassword}x`);
+  await sleep(100);
+  check('a mismatch is pointed out', (await js("return document.querySelector('.password-match').textContent;")).includes('don’t match') && await js("return document.querySelector('.account-submit').disabled;"));
+  await js("document.querySelector('.password-toggle').click();");
+  await sleep(50);
+  check('the password can be shown', await js("return document.querySelector('input[name=new-password]').type === 'text';"));
+  await js("document.querySelector('.password-toggle').click();");
+  await setField('input[name=confirm-password]', newPassword);
+  await sleep(100);
+  check('matching passwords can be submitted', await js("return !document.querySelector('.account-submit').disabled && document.querySelector('.password-match').textContent === 'They match.';"));
+  await clickButton('Set new password');
+  await waitFor("document.querySelector('.account-sent h1')", 20000);
+  check('success is confirmed', (await js("return document.querySelector('.account-sent h1').textContent;")) === 'Your password is changed');
+  check('with a way back to sign in', (await js("return document.querySelector('.account-sent a').textContent;")) === 'Return to sign in');
+  check('earlier sign-ins have ended', (await api('/api/albums', tokenBeforeReset)).status === 401);
+  await go(`${SITE}/reset-password#token=${code}`);
+  await waitFor("document.querySelector('.account-card h1') && !document.querySelector('.account-card[aria-busy]')");
+  check('the link can’t be used twice', (await js("return document.querySelector('.account-card h1').textContent;")) === 'This link can’t be used');
+  await go(SITE);
+  await waitFor("document.querySelector('.account-card')");
+  await setField('input[name=email]', email);
+  await setField('input[name=password]', password);
+  await clickButton('Sign in');
+  await waitFor("document.querySelector('.account-error')?.textContent", 15000);
+  check('the old password no longer works', (await js("return document.querySelector('.account-error').textContent;")).includes("isn't right"));
+  password = newPassword;
+  await setField('input[name=password]', password);
+  await clickButton('Sign in');
+  await waitFor(LIBRARY_READY);
+  check('the new one does, and the albums are all there', (await api('/api/albums', (await session()).token)).body.length === 2);
 
   section('A token the server no longer accepts');
   await js("const s = JSON.parse(localStorage.getItem('keepsake.session')); s.token = 'expired.' + s.token.slice(8); localStorage.setItem('keepsake.session', JSON.stringify(s));");
@@ -253,6 +435,15 @@ try {
   await clickButton('Sign in');
   await waitFor(LIBRARY_READY);
   check('signing in works on a phone', await js("return document.documentElement.scrollWidth <= innerWidth && Boolean(document.querySelector('.account-out'));"));
+  await waitFor("document.querySelector('.collection-tab')");
+  check('both collections fit a phone', await js("return [...document.querySelectorAll('.collection-tab')].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.height >= 44; });"));
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('dialog[open] h2')?.textContent === 'Sign out?'");
+  await clickButton('Sign out');
+  await waitFor("document.querySelector('.account-forgot a')");
+  await js("document.querySelector('.account-forgot a').click();");
+  await waitFor("location.pathname === '/forgot-password'");
+  check('the forgotten-password screen fits a phone', await js("const r = document.querySelector('.account-card').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth;"));
 } catch (error) {
   failed += 1;
   console.log(`  FAIL  ${error.message.split('\n')[0]}`);

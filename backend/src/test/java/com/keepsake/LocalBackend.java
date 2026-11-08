@@ -13,6 +13,7 @@ import org.springframework.boot.SpringApplication;
  *   mvnw spring-boot:test-run
  *
  * Then the API is at http://localhost:8081. Delete backend/data to start again from nothing.
+ * Password reset emails aren't sent: each one is written to a file in backend/data/outbox.
  */
 public final class LocalBackend {
 
@@ -44,6 +45,10 @@ public final class LocalBackend {
         setDefault("keepsake.cors.allowed-origins", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001");
         setDefault("keepsake.storage.type", "local");
         setDefault("keepsake.storage.local-dir", data.resolve("photos").toString());
+        // Nothing is emailed from this computer: reset emails are written to backend/data/outbox.
+        setDefault("keepsake.mail.type", "outbox");
+        setDefault("keepsake.mail.outbox-dir", data.resolve("outbox").toString());
+        setDefault("keepsake.password-reset.app-url", "http://localhost:3000");
         SpringApplication.run(KeepsakeApplication.class, args);
     }
 

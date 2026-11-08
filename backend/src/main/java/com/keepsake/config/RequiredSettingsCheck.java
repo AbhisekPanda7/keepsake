@@ -1,5 +1,6 @@
 package com.keepsake.config;
 
+import java.util.List;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.EnvironmentAware;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 public class RequiredSettingsCheck implements BeanFactoryPostProcessor, EnvironmentAware {
 
     private static final int MIN_SECRET_LENGTH = 32;
+    private static final List<String> MAIL_TYPES = List.of("none", "brevo", "outbox");
 
     private Environment environment;
 
@@ -38,6 +40,10 @@ public class RequiredSettingsCheck implements BeanFactoryPostProcessor, Environm
         }
         if (password.isEmpty()) {
             throw new IllegalStateException("DATABASE_PASSWORD must be set. See backend/.env.example.");
+        }
+        String mail = environment.getProperty("keepsake.mail.type", "none").trim();
+        if (!MAIL_TYPES.contains(mail.isEmpty() ? "none" : mail)) {
+            throw new IllegalStateException("MAIL_TYPE must be one of " + MAIL_TYPES + ", not \"" + mail + "\". See backend/.env.example.");
         }
     }
 }

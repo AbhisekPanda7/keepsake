@@ -48,6 +48,8 @@ class RealServerTest {
         registry.add("keepsake.jwt.secret", () -> "a-test-only-secret-that-is-long-enough-to-use");
         registry.add("keepsake.cors.allowed-origins", () -> "https://album.example");
         registry.add("keepsake.storage.type", () -> "local");
+        // These tests count albums exactly; StarterAlbumApiTest covers the album new accounts get.
+        registry.add("keepsake.starter-album", () -> "false");
         registry.add("keepsake.storage.local-dir", () -> dir);
     }
 

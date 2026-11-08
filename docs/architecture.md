@@ -23,16 +23,21 @@ frontend/src/
   lib/
     album/
       themes.js        Cover colours, materials and papers (pure data)
+      categories.js    The Individual and Couple collections (pure logic)
       pageModel.js     Which photograph is on which page (pure logic)
       reorder.js       Moving photographs within the order (pure logic)
       photoInfo.js     Wording for dates, captions and labels (pure logic)
       bookModel.js     Book dimensions and hinge positions (pure logic)
       leafDeform.js    Page-bending math (pure logic)
       turnController.js  All animation state (pure logic)
-      surfaces.js      Draws paper, covers and wood on canvases, without Three.js
+      surfaces.js      Draws paper, covers, the gilt board linings and wood on canvases, without Three.js
+      ornaments.js     Gilt scrollwork, crest, blossoms and plaque for the linings and title page
       proceduralTextures.js  Turns those canvases into GPU textures
       pageArtwork.js   Draws one page to a canvas
       pageTextureCache.js  Bounded cache of page textures
+    account/
+      passwordRules.js What a new password must be, matching the server (pure logic)
+      emailHandoff.js  Carries the typed email from sign-in to the forgotten-password screen
     ambient/
       cinema.js        The opening's timing and what the camera attends to (pure logic)
       quality.js       Quality levels and the saved view settings
@@ -57,7 +62,9 @@ The files marked as pure logic import neither React nor Three.js, which is why `
 
 ## The library and the album
 
-Each screen has a real URL, so refresh, bookmarks and the back button work: `/` is the library and `/albums/[id]` is an album. Going to another album remounts `AlbumView` from scratch, so nothing carries over between albums, and a 3D scene exists only while an album is open.
+Each screen has a real URL, so refresh, bookmarks and the back button work: `/` is the library and `/albums/[id]` is an album. `/forgot-password` and `/reset-password` are the two password screens, which `AccountGate` lets through without signing in.
+
+The library shows one collection at a time, Individual or Couple (`lib/album/categories.js`), chosen in the header's top right corner. It's the same list of albums, filtered in the browser, so both collections use the same cards, menus and 3D book. The book in the 3D scene is the most recently changed one in the open collection. Which collection was open is remembered in localStorage, as a convenience only. Albums kept in IndexedDB from before collections existed have no `category`, and `localStore.js` reads that as Individual without rewriting them. Going to another album remounts `AlbumView` from scratch, so nothing carries over between albums, and a 3D scene exists only while an album is open.
 
 Books in the library are CSS 3D, not WebGL. A page can hold any number of them, whereas one WebGL scene per book would soon reach the browser's limit on 3D contexts. They use the same `drawCoverColour` as the 3D book, so a book looks the same in both places. `surfaces.js` has no Three.js dependency, which keeps the 3D engine out of the library's first load. The engine is then loaded in the background, ready for when a book is opened.
 
@@ -273,10 +280,15 @@ Frontend (Vercel) --REST--> Spring Boot (Render) --JPA--> PostgreSQL (Supabase)
 
 The frontend uses it when `NEXT_PUBLIC_API_URL` is set at build time. `albumStore.js` then sends every call to `remoteStore.js` instead of `localStore.js`; both have the same functions, so no component knows which is in use. `components/Account/AccountGate.jsx` shows the sign-in screen until someone signs in. The token from the server is kept in localStorage and sent as a `Bearer` header. A 401 from any request signs the person out, which brings the sign-in screen back. Photographs already kept in a browser are not moved to an account.
 
+Forgotten passwords: the email's link is `/reset-password#token=…`. The code is after `#`, so it's never sent to Vercel. `ResetPassword.jsx` reads it, removes it from the address bar, and keeps it in sessionStorage for that tab only, so that a reload still works. It's sent to the server in request bodies, never in a URL. A successful reset raises the account's session version on the server, which ends every earlier sign-in; the page also clears this browser's own.
+
 Every photograph is downloaded with that header, so `getPhotoBlob` fetches it and shares a download already under way. The browser's cache serves later visits, since the server marks each image private and unchanging.
 
 | Function | Endpoint |
 | --- | --- |
+| `requestPasswordReset(email)` | `POST /api/auth/password-reset` |
+| `checkPasswordReset(token)` | `POST /api/auth/password-reset/check` |
+| `confirmPasswordReset(fields)` | `POST /api/auth/password-reset/confirm` |
 | `listAlbums()` | `GET /api/albums` |
 | `getAlbum(id)` | `GET /api/albums/{id}` |
 | `createAlbum(fields)` | `POST /api/albums` |

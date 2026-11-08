@@ -65,10 +65,29 @@ class SupabasePhotoStorageTest {
         Seen request = seen.get(0);
         assertEquals("POST", request.method());
         assertEquals("/storage/v1/object/photos/user/album/photo", request.path());
-        assertEquals("Bearer secret-key", request.auth());
+        assertEquals(null, request.auth(), "a secret key isn't a JWT, so it isn't sent as one");
         assertEquals("secret-key", request.apikey());
         assertEquals("image/jpeg", request.contentType());
         assertArrayEquals(new byte[] {1, 2, 3}, request.body());
+    }
+
+    @Test
+    void aLegacyServiceRoleKeyIsAlsoTheBearerToken() {
+        String legacy = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.c2lnbmF0dXJl";
+        KeepsakeProperties properties = new KeepsakeProperties(null, null, null,
+                new KeepsakeProperties.Storage("supabase", null, "http://127.0.0.1:" + server.getAddress().getPort(), legacy, "photos"));
+        new SupabasePhotoStorage(properties, RestClient.builder()).put("a/b/c", new byte[] {1}, "image/jpeg");
+        assertEquals("Bearer " + legacy, seen.get(0).auth());
+        assertEquals(legacy, seen.get(0).apikey());
+    }
+
+    @Test
+    void aNewSecretKeyGoesOnlyInTheApikeyHeader() {
+        KeepsakeProperties properties = new KeepsakeProperties(null, null, null,
+                new KeepsakeProperties.Storage("supabase", null, "http://127.0.0.1:" + server.getAddress().getPort(), " sb_secret_abc123 ", "photos"));
+        new SupabasePhotoStorage(properties, RestClient.builder()).put("a/b/c", new byte[] {1}, "image/jpeg");
+        assertEquals(null, seen.get(0).auth());
+        assertEquals("sb_secret_abc123", seen.get(0).apikey(), "stray spaces from pasting are trimmed");
     }
 
     @Test

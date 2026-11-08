@@ -3,6 +3,7 @@
  * browser. Each function is one request; the server checks and cleans everything itself,
  * and a failure reaches the UI as the same StorageError the browser store uses.
  */
+import { normalizeCategory } from '../album/categories.js';
 import { StorageError } from './indexedDB.js';
 import { API_URL, clearSession, getSession } from './session.js';
 
@@ -63,6 +64,20 @@ export const register = ({ email, password, displayName }) =>
 export const login = ({ email, password }) =>
   readJson('/api/auth/login', { method: 'POST', json: { email, password }, anonymous: true });
 
+// ---- forgotten passwords ------------------------------------------------------
+
+/** Always answers the same way, whether or not the email has an account. */
+export const requestPasswordReset = (email) =>
+  readJson('/api/auth/password-reset', { method: 'POST', json: { email }, anonymous: true });
+
+/** Resolves with { expiresAt } if the link can still be used; otherwise fails with error.reason. */
+export const checkPasswordReset = (token) =>
+  readJson('/api/auth/password-reset/check', { method: 'POST', json: { token }, anonymous: true });
+
+export async function confirmPasswordReset({ token, password, confirmPassword }) {
+  await request('/api/auth/password-reset/confirm', { method: 'POST', json: { token, password, confirmPassword }, anonymous: true });
+}
+
 // ---- albums -----------------------------------------------------------------
 
 export const listAlbums = () => readJson('/api/albums');
@@ -77,13 +92,14 @@ export async function getAlbum(albumId) {
   }
 }
 
-export const createAlbum = ({ title, description, theme } = {}) =>
-  readJson('/api/albums', { method: 'POST', json: { title, description, theme } });
+export const createAlbum = ({ title, description, theme, category } = {}) =>
+  readJson('/api/albums', { method: 'POST', json: { title, description, theme, category: normalizeCategory(category) } });
 
 /** Only the fields given are changed. Returns the album's details, without its photographs. */
 export async function saveAlbum(albumId, fields) {
   const changes = {};
   for (const key of ['title', 'description', 'theme']) if (key in fields) changes[key] = fields[key] ?? '';
+  if ('category' in fields) changes.category = normalizeCategory(fields.category);
   const { photos, ...album } = await readJson(`/api/albums/${encodeURIComponent(albumId)}`, { method: 'PATCH', json: changes });
   return album;
 }
